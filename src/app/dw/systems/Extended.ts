@@ -20,7 +20,7 @@ import {
 } from './gear';
 import {
     JOBS, RACES, addJobXp, getJob, getRace, isTown, supportLevel, supportTraitMods, SUPPORT_UNLOCK_LEVEL,
-} from './jobs';
+    Role } from './jobs';
 import {
     MaterialFamily, PROFESSIONS, RecipeDef, SUPPLIES, SupplyId, contentLevel, craft, createProfessionState,
     gather, getMaterial, getProfession, lessonCap, lessonCost, perkValue, MATERIALS,
@@ -32,13 +32,21 @@ import {
     GEM_FAMILIES, RUNE_FAMILIES, SocketKind, addToBag, fuse, socketFromBag, socketableId, socketableName,
     tierForItemLevel, unsocketToBag, emptySockets, socketCapacity,
 } from './sockets';
-import { StatMods, addMods, capMods } from './stats';
+import { StatMods, SubstatKey, addMods, capMods } from './stats';
+import { TALENT_RESPEC_COST_PER_POINT, canLearn, getTalent, learnTalent, talentMods, talentPointsForLevel, talentPointsSpent } from './talents';
+import { FORGE_SHARD_COST, IMPRINT_COST, extractAspect, forgeAffix, imprintAspect, initialPotential, salvageShards } from './forge';
+import { Adventurer, EventProgress, currentEvent, formGroup, groupFinderBonus, queueTime } from './events';
+import { rollUnique } from './legendaries';
+import { CHECK_REWARD_BONUS, STORY, abilityCheck, currentAct, getAct } from './story';
+import {
+    ArmoryItem, MAX_UPGRADE, UpgradeSlot, attemptUpgrade, masteryMods, masteryRank, upgradeCost, weaponTypeOf,
+} from './armory';
 import {
     AttributeScores, SUBCLASS_LEVEL, SkillCoreDef, attributeMods, computeAttributes, coreSlotsFor, getClass, getCore,
     getSubclass, rollCore, rollGearBase,
 } from './characters';
 import {
-    MAX_WORLD_TIER, WORLD_TIER_NAMES, getInstance, heroContentLevel, instanceBoss, instanceClearGold, isLockedOut,
+    MAX_WORLD_TIER, WORLD_TIER_NAMES, availableInstances, getInstance, heroContentLevel, instanceBoss, instanceClearGold, isLockedOut,
     stageEnemy, worldTierScaling, worldTierUnlockLevel,
 } from './instances';
 
@@ -66,7 +74,7 @@ export interface PartyLike {
     gold: number;
 }
 
-/** Dragon Warrior caps gold at 9999 on screen; the extended game allows more. */
+/** The classic game caps gold at 9999; the extended game allows more. */
 export const GOLD_CAP = 999999;
 
 export interface VictoryContext {
@@ -100,7 +108,7 @@ export class Extended {
     // Equipment enhancements and derived stats
 
     /**
-     * Makes sure each equipped Dragon Warrior item has an enhancement record. Equipping a
+     * Makes sure each equipped classic item has an enhancement record. Equipping a
      * different item (shop, chest, cheat) gives it a fresh Common enhancement.
      */
     syncEnhancements(hero: HeroLike): void {
@@ -162,6 +170,8 @@ export class Extended {
             attributeMods(this.attributes()),
             getSubclass(this.save.job, this.save.subclasses[this.save.job])?.mods,
             ...this.save.equippedCores.map((id) => getCore(id)?.mods),
+            talentMods(this.save.talents),
+            masteryMods(this.weaponMasteryRank(hero)),
             aggregateEquipmentStats(this.equippedPieces()),
             this.companionMods(),
         ));
@@ -301,6 +311,12 @@ export class Extended {
         const objective: Record<string, SeasonObjective> = { dungeon: 'dungeons', raid: 'raids', trial: 'trials', tower: 'trials' };
         this.record(objective[instance.kind], 'instancesCleared');
         const lines = [ `Thou hast conquered ${instance.name}!` ];
+        if (this.save.groupRole) {
+            const bonus = groupFinderBonus(this.save.groupRole);
+            this.addGold(party, bonus);
+            lines.push(`Group finder bonus: ${bonus} gold. Thy party disbands.`);
+            delete this.save.groupRole;
+        }
         if (first) {
             const gold = Math.round(instanceClearGold(instance) * worldTierScaling(this.save.worldTier).rewardMult);
             this.addGold(party, gold);
@@ -309,7 +325,242 @@ export class Extended {
         return { done: true, lines };
     }
 
+    // -----------------------------------------------------------------------
+    // Story
+
+    /** Rolls the current act's 5e ability check once. */
+    rollStoryCheck(hero: HeroLike): { ok: boolean; lines: string[] } {
+        const act = currentAct(this.save.story);
+        if (!act) {
+            return { ok: false, lines: [ 'Thy legend is complete.' ] };
+        }
+        if (act.act in this.save.story.checks) {
+            return { ok: false, lines: [ 'Thou hast already made this check.' ] };
+        }
+        const r = abilityCheck(this.rng, act.check, this.attributes(), hero.level);
+        this.save.story.checks[act.act] = r.success;
+        const crit = r.critical === 'nat20' ? ' NATURAL 20!' : r.critical === 'nat1' ? ' NATURAL 1!' : '';
+        return { ok: true, lines: [
+            `${act.check.skill} check (${act.check.ability}) DC ${r.dc}:`,
+            `d20 = ${r.roll}, +${r.modifier} = ${r.total}.${crit} ${r.success ? 'SUCCESS' : 'FAILURE'}`,
+            r.success ? act.check.success : act.check.failure,
+        ] };
+    }
+
+    /** Completes an act after its villain falls; returns narrative and reward lines. */
+    completeAct(actNumber: number, hero: HeroLike, party: PartyLike): string[] {
+        const act = getAct(actNumber);
+        if (!act || this.save.story.completed >= actNumber) {
+            return [];
+        }
+        this.save.story.completed = actNumber;
+        const bonus = this.save.story.checks[actNumber] ? CHECK_REWARD_BONUS : 1;
+        const gold = Math.round(act.reward.gold * bonus);
+        const xp = Math.round(act.reward.xp * bonus);
+        this.addGold(party, gold);
+        const lines = [ act.finale, `ACT ${act.act} COMPLETE: ${act.title}`, `Thou earnest ${gold} gold.` ];
+        lines.push(...this.gainExperience(hero, xp));
+        if (actNumber === STORY.length) {
+            this.save.extraTitles.push('the Souldcrest');
+            lines.push('Title earned: the Souldcrest.');
+        }
+        return lines;
+    }
+
+    // -----------------------------------------------------------------------
+    // Weapon mastery, upgrades and the armory
+
+    currentWeaponType(hero: HeroLike): string {
+        return weaponTypeOf(hero.weapon?.name, this.save.enhancements.weapon?.name);
+    }
+
+    weaponMasteryRank(hero: HeroLike): number {
+        return masteryRank(this.save.weaponKills[this.currentWeaponType(hero)] ?? 0);
+    }
+
+    /** Counts a kill toward the equipped weapon's mastery; returns a line on rank up. */
+    addWeaponKill(hero: HeroLike): string | undefined {
+        const type = this.currentWeaponType(hero);
+        const before = masteryRank(this.save.weaponKills[type] ?? 0);
+        this.save.weaponKills[type] = (this.save.weaponKills[type] ?? 0) + 1;
+        const after = masteryRank(this.save.weaponKills[type]);
+        return after > before ? `${type.toUpperCase()} mastery rank ${after}!` : undefined;
+    }
+
+    upgradeGear(slot: UpgradeSlot, hero: HeroLike, party: PartyLike): { ok: boolean; message: string } {
+        const gear = this.save.enhancements[slot];
+        if (!gear) {
+            return { ok: false, message: 'Nothing is equipped there.' };
+        }
+        const level = gear.upgrade ?? 0;
+        if (level >= MAX_UPGRADE) {
+            return { ok: false, message: `Already at +${MAX_UPGRADE}.` };
+        }
+        const cost = upgradeCost(level, gear.itemLevel);
+        if (party.gold < cost.gold || this.save.shards < cost.shards) {
+            return { ok: false, message: `Upgrading needs ${cost.gold} gold and ${cost.shards} shards.` };
+        }
+        party.gold -= cost.gold;
+        this.save.shards -= cost.shards;
+        const result = attemptUpgrade(this.rng, level);
+        gear.upgrade = result.level;
+        this.applyDerived(hero);
+        switch (result.outcome) {
+            case 'success': return { ok: true, message: `Success! Thy ${slot} is now +${result.level}.` };
+            case 'downgrade': return { ok: false, message: `The upgrade failed. Thy ${slot} fell to +${result.level}.` };
+            default: return { ok: false, message: 'The upgrade failed, but thy gear is unharmed.' };
+        }
+    }
+
+    buyFromArmory(item: ArmoryItem, hero: HeroLike, party: PartyLike): { ok: boolean; message: string } {
+        if (party.gold < item.price) {
+            return { ok: false, message: `The ${item.name} costs ${item.price} gold.` };
+        }
+        if (this.save.bag.length >= BAG_MAX_SIZE) {
+            return { ok: false, message: 'Thy bag is full.' };
+        }
+        party.gold -= item.price;
+        const gear = createGearInstance(this.rng, item.slot, Math.max(1, Math.round(contentLevel(hero.level))),
+            { quality: 'Rare', name: item.name, baseMods: item.mods, worldTier: this.save.worldTier });
+        this.addToBag(gear);
+        return { ok: true, message: `Thou hast bought the ${item.name}. EQUIP it from the BAG.` };
+    }
+
+    // -----------------------------------------------------------------------
+    // Talents
+
+    talentPointsLeft(hero: HeroLike): number {
+        return talentPointsForLevel(hero.level) - talentPointsSpent(this.save.talents);
+    }
+
+    learn(talentId: string, hero: HeroLike): { ok: boolean; message: string } {
+        const check = canLearn(this.save.talents, hero.level, talentId);
+        if (!check.ok) {
+            return { ok: false, message: check.reason ?? 'Thou canst not learn that.' };
+        }
+        learnTalent(this.save.talents, hero.level, talentId);
+        this.applyDerived(hero);
+        return { ok: true, message: `${getTalent(talentId)?.name ?? 'Talent'} is now rank ${this.save.talents[talentId]}.` };
+    }
+
+    respecTalents(hero: HeroLike, party: PartyLike): { ok: boolean; message: string } {
+        const cost = talentPointsSpent(this.save.talents) * TALENT_RESPEC_COST_PER_POINT;
+        if (party.gold < cost) {
+            return { ok: false, message: `Resetting talents costs ${cost} gold.` };
+        }
+        party.gold -= cost;
+        this.save.talents = {};
+        this.applyDerived(hero);
+        return { ok: true, message: `Thy talents are reset for ${cost} gold.` };
+    }
+
+    // -----------------------------------------------------------------------
+    // Salvage, aspects and forging
+
+    salvage(index: number): { ok: boolean; message: string } {
+        const gear = this.save.bag[index];
+        if (!gear) {
+            return { ok: false, message: 'No such item.' };
+        }
+        this.save.bag.splice(index, 1);
+        const shards = salvageShards(gear);
+        this.save.shards += shards;
+        const aspect = extractAspect(gear);
+        let extra = '';
+        if (aspect && !this.save.aspects.some((a) => a.key === aspect.key && a.value >= aspect.value)) {
+            this.save.aspects = this.save.aspects.filter((a) => a.key !== aspect.key);
+            this.save.aspects.push(aspect);
+            extra = ` ${aspect.name} added to the codex!`;
+        }
+        return { ok: true, message: `Salvaged ${gearDisplayName(gear, gear.slot)} for ${shards} shards.${extra}` };
+    }
+
+    imprint(aspectIndex: number, slot: SocketSlot, hero: HeroLike): { ok: boolean; message: string } {
+        const aspect = this.save.aspects[aspectIndex];
+        const gear = this.save.enhancements[slot];
+        if (!aspect || !gear) {
+            return { ok: false, message: 'Nothing to imprint.' };
+        }
+        if (this.save.shards < IMPRINT_COST) {
+            return { ok: false, message: `Imprinting costs ${IMPRINT_COST} shards.` };
+        }
+        this.save.shards -= IMPRINT_COST;
+        imprintAspect(gear, aspect);
+        this.applyDerived(hero);
+        return { ok: true, message: `${aspect.name} imprinted on thy ${slot}.` };
+    }
+
+    forge(slot: SocketSlot, key: SubstatKey, hero: HeroLike): { ok: boolean; message: string } {
+        const gear = this.save.enhancements[slot];
+        if (!gear) {
+            return { ok: false, message: 'Nothing is equipped there.' };
+        }
+        if (this.save.shards < FORGE_SHARD_COST) {
+            return { ok: false, message: `Forging costs ${FORGE_SHARD_COST} shards.` };
+        }
+        gear.potential ??= initialPotential(gear);
+        const result = forgeAffix(this.rng, gear, gear.potential, key);
+        if (result.ok) {
+            this.save.shards -= FORGE_SHARD_COST;
+            gear.potential -= result.spent;
+            this.applyDerived(hero);
+        }
+        return { ok: result.ok, message: result.message };
+    }
+
+    // -----------------------------------------------------------------------
+    // World events and group finder
+
+    /** Event progress for the current rotation (resetting stale progress). */
+    eventProgress(now = Date.now()): EventProgress {
+        const event = currentEvent(now);
+        if (this.save.eventProgress?.key !== event.key) {
+            this.save.eventProgress = { key: event.key, kills: 0, claimed: false };
+        }
+        return this.save.eventProgress;
+    }
+
+    /** Records an event foe defeated; returns lines (completion reward on the last one). */
+    eventKill(hero: HeroLike, party: PartyLike): string[] {
+        const event = currentEvent();
+        const progress = this.eventProgress();
+        if (progress.claimed) {
+            return [];
+        }
+        progress.kills++;
+        if (progress.kills < event.def.goal) {
+            return [ `${event.def.name}: ${progress.kills}/${event.def.goal}.` ];
+        }
+        progress.claimed = true;
+        const mult = worldTierScaling(this.save.worldTier).rewardMult;
+        const gold = Math.round(event.def.rewardGold * mult);
+        this.addGold(party, gold);
+        this.record(event.def.kind === 'world_boss' ? 'worldBosses' : undefined, 'eventsCompleted');
+        return [ `${event.def.name} complete! Thou earnest ${gold} gold.`, ...this.gainExperience(hero, Math.round(event.def.rewardXp * mult)) ];
+    }
+
+    /** Queues for a random dungeon at the hero's level with an NPC group. */
+    groupFinder(role: Role, hero: HeroLike): { ok: boolean; message: string; group?: Adventurer[] } {
+        const options = availableInstances('dungeon', hero.level).filter((i) => !isLockedOut(this.save.lockouts, i));
+        if (!options.length) {
+            return { ok: false, message: 'No dungeons are open to thee.' };
+        }
+        const instance = options[options.length - 1 - Math.floor(this.rng() * Math.min(3, options.length))];
+        const started = this.startRun(instance.id, hero);
+        if (!started.ok) {
+            return started;
+        }
+        this.save.groupRole = role;
+        const group = formGroup(this.rng, role);
+        return {
+            ok: true,
+            message: `Group found in ${queueTime(role)}s! ${instance.name} with ${group.map((g) => `${g.name} (${g.role})`).join(', ')}.`,
+            group,
+        };
+    }
+
     abandonRun(): string {
+        delete this.save.groupRole;
         const run = this.save.activeRun;
         delete this.save.activeRun;
         return run ? 'Thou hast left the instance.' : 'Thou art not in an instance.';
@@ -491,6 +742,14 @@ export class Extended {
         lines.push(...this.gainExperience(hero, xp));
 
         this.record('kills', 'kills');
+        if (ctx.enemyName.startsWith('gen_') && !this.save.bestiarySeen.includes(ctx.enemyName)) {
+            this.save.bestiarySeen.push(ctx.enemyName);
+            lines.push('A new entry in thy bestiary!');
+        }
+        const masteryLine = this.addWeaponKill(hero);
+        if (masteryLine) {
+            lines.push(masteryLine);
+        }
         if (ctx.elite) {
             this.record('eliteKills', 'eliteKills');
         }
@@ -523,6 +782,16 @@ export class Extended {
                 { magicFind: mf, worldTier: this.save.worldTier, name: base.name, baseMods: base.mods });
             if (this.addToBag(gear)) {
                 lines.push(`Thou hast found ${base.name} (${gear.quality}, rarity ${QUALITIES.indexOf(gear.quality) + 1}).`);
+            }
+        }
+        if (chance(this.rng, (boss ? 0.1 : 0.003) * mfMult)) {
+            const unique = rollUnique(this.rng, level);
+            if (unique) {
+                const gear = createGearInstance(this.rng, unique.slot, Math.max(level, unique.level),
+                    { quality: 'Legendary', name: unique.name, baseMods: unique.mods, worldTier: this.save.worldTier });
+                if (this.addToBag(gear)) {
+                    lines.push(`A legendary! Thou hast found ${unique.name}.`);
+                }
             }
         }
         if (boss && chance(this.rng, 0.25 * mfMult)) {

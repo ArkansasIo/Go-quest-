@@ -165,6 +165,15 @@ const updateIndex = (log: AdventureLog): void => {
 };
 
 /**
+ * Deletes a saved adventure log and removes it from the summary index.
+ */
+export const deleteAdventureLog = (id: string): void => {
+    localStorage.removeItem(KEY_PREFIX + id);
+    const summaries = getAdventureLogSummaries().filter((s) => s.id !== id);
+    localStorage.setItem(INDEX_KEY, JSON.stringify(summaries));
+};
+
+/**
  * Returns summary metadata for all saved adventure logs, suitable for
  * populating a save-select screen.
  */

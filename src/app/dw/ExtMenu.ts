@@ -50,8 +50,15 @@ export class ExtMenu {
     private closeAfterInfo = false;
     private closed = false;
 
-    constructor(game: DwGame, root: MenuNodeFactory) {
+    private readonly layout: 'side' | 'center';
+
+    /**
+     * @param layout 'side' puts the root menu in a panel down the right (in-game menus);
+     *        'center' centers every level (title screen).
+     */
+    constructor(game: DwGame, root: MenuNodeFactory, layout: 'side' | 'center' = 'side') {
         this.game = game;
+        this.layout = layout;
         this.push(root);
     }
 
@@ -95,7 +102,12 @@ export class ExtMenu {
         let x: number;
         let y: number;
         let w: number;
-        if (depth === 0) {
+        if (this.layout === 'center') {
+            // Centered panels, stepping down slightly as they nest
+            w = Math.min(game.getWidth() - tileSize * 2, tileSize * 13);
+            x = (game.getWidth() - w) / 2 + depth * tileSize / 2;
+            y = tileSize * 6 + depth * tileSize / 2;
+        } else if (depth === 0) {
             // Root menu: a narrow vertical panel down the right side
             w = Math.min(game.getWidth() - tileSize, tileSize * 9.5);
             x = game.getWidth() - w - tileSize / 2;

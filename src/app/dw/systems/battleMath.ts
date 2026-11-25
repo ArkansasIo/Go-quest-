@@ -1,5 +1,5 @@
 /**
- * Applies extended modifiers to Dragon Warrior's base damage formulas.
+ * Applies extended modifiers to the classic base damage formulas.
  */
 import { Rng, chance } from './rng';
 import { StatMods, elementalBonus, getMod } from './stats';

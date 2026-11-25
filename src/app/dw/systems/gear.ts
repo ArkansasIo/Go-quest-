@@ -3,13 +3,14 @@
  * See docs/GEAR_STATS_ECONOMY.md, docs/BOSS_LOOT_AND_LEGENDARY_SETS.md and
  * docs/ARTIFACTS_AND_RELICS.md.
  *
- * Dragon Warrior's own weapon/armor/shield stay as they are; a {@link GearEnhancement}
+ * The classic weapon/armor/shield stay as they are; a {@link GearEnhancement}
  * is attached to each equipped slot (quality, affixes, sockets, durability, set). Artifacts
  * and relics are two extra slots holding {@link GearInstance}s.
  */
 import { Rng, chance, pick, rollInt } from './rng';
 import { Sockets, emptySockets, socketsMods } from './sockets';
 import { StatMods, SubstatKey, addMods } from './stats';
+import { upgradeMods } from './armory';
 
 /** Rarity grades 1-9. */
 export const QUALITIES = [ 'Poor', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Exalted', 'Divine' ] as const;
@@ -83,7 +84,7 @@ export const LEGENDARY_SETS: LegendarySet[] = [
 
 export const getSet = (id: string): LegendarySet | undefined => LEGENDARY_SETS.find((s) => s.id === id);
 
-/** Base effect families of artifacts and relics (applied in Dragon Warrior terms). */
+/** Base effect families of artifacts and relics (applied in classic-combat terms). */
 export type WondrousEffect = 'HP' | 'AC' | 'SAVE' | 'ABILITY' | 'HIT' | 'INITIATIVE';
 
 const WONDROUS_EFFECTS: WondrousEffect[] = [ 'HP', 'AC', 'SAVE', 'ABILITY', 'HIT', 'INITIATIVE' ];
@@ -123,7 +124,7 @@ export const wondrousBaseMods = (effect: WondrousEffect, itemLevel: number): Sta
     }
 };
 
-/** Enhancement data attached to Dragon Warrior's weapon, armor or shield. */
+/** Enhancement data attached to the classic weapon, armor or shield. */
 export interface GearEnhancement {
     quality: Quality;
     itemLevel: number;
@@ -135,6 +136,10 @@ export interface GearEnhancement {
     setId?: string;
     /** Display name override, e.g. a named set piece. */
     name?: string;
+    /** Forging potential left (set the first time the item is forged). */
+    potential?: number;
+    /** Upgrade level +0 to +15. */
+    upgrade?: number;
 }
 
 /** A standalone piece of gear (artifact, relic, or a set piece / loot in the bag). */
@@ -229,6 +234,11 @@ export const createSetPiece = (rng: Rng, setId: string, pieceIndex: number, item
 };
 
 export const gearDisplayName = (gear: GearInstance | GearEnhancement & { slot?: EquipSlot; catalogIndex?: number }, baseName = ''): string => {
+    const name = baseGearName(gear, baseName);
+    return gear.upgrade ? `${name} +${gear.upgrade}` : name;
+};
+
+const baseGearName = (gear: GearInstance | GearEnhancement & { slot?: EquipSlot; catalogIndex?: number }, baseName: string): string => {
     if (gear.name) {
         return gear.name;
     }
@@ -252,7 +262,7 @@ export const gearMods = (gear: GearEnhancement & { slot?: EquipSlot; catalogInde
     if ((gear.slot === 'artifact' || gear.slot === 'relic') && gear.catalogIndex !== undefined) {
         base = wondrousBaseMods(wondrousEffect(gear.catalogIndex), gear.itemLevel);
     }
-    return addMods(base, gear.affixes, socketsMods(gear.gems), socketsMods(gear.runes));
+    return addMods(base, gear.affixes, socketsMods(gear.gems), socketsMods(gear.runes), upgradeMods(gear.slot, gear.upgrade ?? 0));
 };
 
 export interface SetBonusInfo {

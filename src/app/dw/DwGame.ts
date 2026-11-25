@@ -4,6 +4,7 @@ import {
     Game,
     GameArgs,
     getProperty,
+    Image,
     InputManager,
     Keys,
     TiledImagePathModifier,
@@ -57,6 +58,11 @@ import { StatMods } from '@/app/dw/systems/stats';
 import { pickRareBoss } from '@/app/dw/systems/bosses';
 import { TileLocation, placeDiscoveries } from '@/app/dw/systems/discoveries';
 import { defaultRng } from '@/app/dw/systems/rng';
+import { currentEvent } from '@/app/dw/systems/events';
+import { zoneAt } from '@/app/dw/systems/world';
+import { MonsterDef, getMonster, isGeneratedMonster, monstersNear, toEnemyData } from '@/app/dw/systems/monsters';
+import { renderMonster } from '@/app/dw/systems/sprites';
+import { contentLevel } from '@/app/dw/systems/professions';
 
 /** Chance that a random encounter is a rare roaming boss instead. */
 export const RARE_BOSS_CHANCE = 1 / 40;
@@ -83,6 +89,7 @@ export class DwGame extends Game {
     /** Extended systems (jobs, gear, gems, runes, bosses, professions, ...). */
     ext: Extended;
     private readonly discoveryPlacements = new Map<string, Map<string, TileLocation>>();
+    private readonly generatedSprites = new Set<string>();
 
     constructor(args?: GameArgs) {
         super(args);
@@ -273,7 +280,27 @@ export class DwGame extends Game {
         return this.adventureLog;
     }
 
+    /**
+     * Registers a catalog monster's generated sprites (normal and hit flash) the first time
+     * it is needed.
+     */
+    private ensureMonsterSprites(monster: MonsterDef) {
+        if (this.generatedSprites.has(monster.id)) {
+            return;
+        }
+        this.assets.set(monster.id, new Image(renderMonster(monster, this.scale)));
+        this.assets.set(`${monster.id}_damaged`, new Image(renderMonster(monster, this.scale, true)));
+        this.generatedSprites.add(monster.id);
+    }
+
     getEnemy(name: string): EnemyData {
+        if (isGeneratedMonster(name)) {
+            const monster = getMonster(name);
+            if (monster) {
+                this.ensureMonsterSprites(monster);
+                return toEnemyData(monster);
+            }
+        }
         const enemyDatas: Record<string, EnemyData> = this.assets.get('enemies');
         // The game itself looks up by ID/key, but the "Battle" cheats menu looks up by display name
         return enemyDatas[name] ?? Object.values(enemyDatas).find((e) => e.name === name);
@@ -835,6 +862,46 @@ export class DwGame extends Game {
     }
 
     /**
+     * In the current world event's zone, half of random encounters are event foes.
+     */
+    private possiblyStartEventFoe(): boolean {
+        const map = this.getMap();
+        if (map.name !== 'overworld') {
+            return false;
+        }
+        const event = currentEvent();
+        const { zone } = zoneAt(this.hero.mapRow, this.hero.mapCol, map.height, map.width);
+        if (zone.id !== event.zone.id || this.ext.eventProgress().claimed || defaultRng() >= 0.5 ||
+            !this.getEnemy(event.def.enemy)) {
+            return false;
+        }
+        this.startEncounter(event.def.enemy, { event: true, name: `${event.def.name} ${this.getEnemy(event.def.enemy).name}` });
+        return true;
+    }
+
+    /**
+     * Half of random encounters are monsters from the 420-monster bestiary, chosen by the
+     * zone's level (on the overworld) and the hero's level.
+     */
+    private possiblyStartCatalogMonster(): boolean {
+        if (defaultRng() >= 0.5) {
+            return false;
+        }
+        const map = this.getMap();
+        const heroLevel = Math.round(contentLevel(this.hero.level));
+        let target = heroLevel;
+        if (map.name === 'overworld') {
+            const { zone } = zoneAt(this.hero.mapRow, this.hero.mapCol, map.height, map.width);
+            // The zone sets the danger, but never far beyond what the hero can handle
+            target = Math.max(1, Math.min(zone.minLevel, heroLevel + 15));
+        }
+        const candidates = monstersNear(target);
+        const monster = candidates[Math.floor(defaultRng() * candidates.length)];
+        this.startEncounter(monster.id);
+        return true;
+    }
+
+    /**
      * Possibly turns a random encounter into a rare roaming boss.
      */
     private possiblyStartRareBoss(): boolean {
@@ -860,7 +927,7 @@ export class DwGame extends Game {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                     territory = territory - (this.map as any).getTilesetForGid(territory).firstgid;
                     if (territory >= 0) {
-                        if (this.possiblyStartRareBoss()) {
+                        if (this.possiblyStartEventFoe() || this.possiblyStartRareBoss() || this.possiblyStartCatalogMonster()) {
                             return true;
                         }
                         const territories: string[][] = this.assets.get('enemyTerritories');
@@ -879,6 +946,10 @@ export class DwGame extends Game {
         const muted: boolean = this.audio.toggleMuted();
         this.setStatusMessage(muted ? 'Audio muted' : 'Audio enabled');
         return muted;
+    }
+
+    setRandomEncounters(enabled: boolean) {
+        this.randomEncounters = enabled;
     }
 
     toggleRandomEncounters() {

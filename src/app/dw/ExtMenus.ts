@@ -2,6 +2,7 @@
  * Menu trees for the extended systems: GEAR (equipment, gem/rune forges, bag, repairs)
  * and MORE (journals, jobs, professions, supplies, companions, mounts, season).
  */
+import { STORY, TIER_NAMES, currentAct } from './systems/story';
 import { DwGame } from './DwGame';
 import { HERB } from './Item';
 import { MenuInfo, MenuItem, MenuNodeFactory, MenuResult } from './ExtMenu';
@@ -17,11 +18,11 @@ import {
     EquipSlot, GearEnhancement, QUALITY_COLOR, SocketSlot, gearDisplayName, gearMods, gearScore,
     quoteVendorPrice, setBonuses,
     AFFIX_COUNT, QUALITIES } from './systems/gear';
-import { JOBS, RACES, availableAbilities, getJob, getRace, isTown, supportLevel, SUPPORT_UNLOCK_LEVEL } from './systems/jobs';
+import { JOBS, RACES, availableAbilities, getJob, getRace, isTown, supportLevel, SUPPORT_UNLOCK_LEVEL , Role } from './systems/jobs';
 import {
     PROFESSIONS, SUPPLIES, SupplyId, canBuyPerk, getMaterial, lessonCost, perkPointsForSkill, perkTree,
     pointsSpent, recipesFor, resetPerks, buyPerk, hasMaterials,
-} from './systems/professions';
+    contentLevel } from './systems/professions';
 import { MasteryStat, paragonRank, xpToNextLevel } from './systems/progression';
 import {
     JOURNEY, PASS_TIERS, chapterComplete, claimChapter, claimEventCache, claimWeekly, monthlyEvent, passTier,
@@ -29,6 +30,16 @@ import {
 } from './systems/seasons';
 import { SocketKind, parseSocketable, socketableName } from './systems/sockets';
 import { SUBSTATS, describeMods } from './systems/stats';
+import { TALENTS, TREE_NAMES, TreeId, pointsInTree } from './systems/talents';
+import { FORGEABLE, FORGE_SHARD_COST, IMPRINT_COST, initialPotential } from './systems/forge';
+import { currentEvent, groupFinderBonus, minutesLeft, queueTime } from './systems/events';
+import { BATTLE_SPELLS, knownSpells } from './systems/spells';
+import { BOSS_TITLES, UNIQUES } from './systems/legendaries';
+import { optionsMenu } from './InitialMenuState';
+import { HotkeyAction, keybindHelpLines } from './Keybinds';
+import {
+    MASTERY_THRESHOLDS, UpgradeSlot, armoryStock, masteryMods, masteryRank, upgradeChance, upgradeCost,
+} from './systems/armory';
 import {
     ARMOR_CLASSES, ATTRIBUTES, ATTRIBUTE_INFO, CLASSES, CORE_RACES, GEAR_TIERS, ITEM_CATEGORIES, SKILL_CORES, WEAPON_TYPES,
     attributeModifier, coreSlotsFor, getClass, getCore,
@@ -65,6 +76,44 @@ export class ExtMenus {
         this.game.ext.applyDerived(this.game.hero);
     }
 
+    /**
+     * The menu (or message) a hotkey opens. Returns undefined for actions handled elsewhere
+     * (world map, classic items, status).
+     */
+    hotkey(action: HotkeyAction): MenuNodeFactory | MenuInfo | undefined {
+        switch (action) {
+            case 'mainMenu': return this.moreRoot();
+            case 'gear': return this.gearRoot();
+            case 'character': return this.characterMenu();
+            case 'bag': return this.bagMenu();
+            case 'journal': return this.journalMenu();
+            case 'talents': return this.talentsMenu();
+            case 'spells': return info('SPELLS', ...knownSpells(this.ext.save.job, this.ext.jobLevel(this.ext.save.job))
+                .map((sp) => `${sp.name} ${sp.mp}MP (${sp.school})`), 'Cast them in battle with SPELL.');
+            case 'cores': return this.coresMenu();
+            case 'forge': return this.forgeMenu();
+            case 'season': return this.seasonMenu();
+            case 'adventure': return this.adventureMenu();
+            case 'atlas': return this.atlasMenu();
+            case 'worldTier': return this.worldTierMenu();
+            case 'ride': {
+                const r = this.ext.toggleRide(this.mapName());
+                return info(undefined, r.message);
+            }
+            case 'professions': return this.professionsMenu();
+            case 'companion': return this.companionMenu();
+            case 'save':
+                if (this.ext.save.activeRun) {
+                    return info(undefined, 'Thou canst not save inside a dungeon.');
+                }
+                this.game.saveAdventureLog();
+                this.game.audio.playSound('save');
+                return info(undefined, 'Thy deeds have been recorded in the Adventure Log.');
+            case 'help': return info('KEYBINDS', ...keybindHelpLines());
+            default: return undefined;
+        }
+    }
+
     // =====================================================================
     // GEAR
 
@@ -80,6 +129,15 @@ export class ExtMenus {
                     item(`BAG (${this.ext.save.bag.length})`, () => this.bagMenu()),
                     item('ARTIFACT & RELIC', () => this.wondrousMenu()),
                     item('REPAIR', () => this.repair()),
+                    item(`FORGE (${this.ext.save.shards} SHARDS)`, () => this.forgeMenu()),
+                    item('UPGRADE +1..+15', () => this.upgradeMenu()),
+                    item('ARMORY', () => {
+                        if (!isTown(this.mapName())) {
+                            return info(undefined, 'The armory is in town.');
+                        }
+                        return this.armoryMenu();
+                    }),
+                    item('WEAPON MASTERY', () => this.masteryInfo()),
                     item('ALL BONUSES', () => this.bonusInfo()),
                 ],
             };
@@ -222,6 +280,7 @@ export class ExtMenus {
                         const r = this.ext.equipFromBag(index, this.game.hero);
                         return r.ok ? { lines: [ r.message ] } : info(undefined, r.message);
                     }),
+                    item('SALVAGE', () => info(undefined, this.ext.salvage(index).message)),
                     item('SELL', () => {
                         if (!isTown(this.mapName())) {
                             return info(undefined, 'Thou must be in a town to sell.');
@@ -259,6 +318,7 @@ export class ExtMenus {
         return () => ({
             title: 'MENU',
             items: [
+                item('STORY', () => this.storyMenu()),
                 item('CHARACTER', () => this.characterMenu()),
                 item('WORLD', () => () => ({
                     title: 'WORLD',
@@ -280,6 +340,15 @@ export class ExtMenus {
                 item('JOURNAL', () => this.journalMenu()),
                 item('SEASON', () => this.seasonMenu()),
                 item('TITLE', () => this.titleMenu()),
+                item('SAVE GAME', () => {
+                    if (this.ext.save.activeRun) {
+                        return info(undefined, 'Thou canst not save inside a dungeon.');
+                    }
+                    this.game.saveAdventureLog();
+                    this.game.audio.playSound('save');
+                    return info(undefined, 'Thy deeds have been recorded in the Adventure Log.');
+                }),
+                item('OPTIONS', () => optionsMenu(this.game)),
             ],
         });
     }
@@ -295,6 +364,9 @@ export class ExtMenus {
                 item('CLASS & JOBS', () => this.jobsMenu()),
                 item('SUBCLASS', () => this.subclassMenu()),
                 item(`SKILL CORES ${this.ext.save.equippedCores.length}/${coreSlotsFor(this.game.hero.level)}`, () => this.coresMenu()),
+                item(`TALENTS (${this.ext.talentPointsLeft(this.game.hero)})`, () => this.talentsMenu()),
+                item('SPELLS', () => info('SPELLS', ...knownSpells(this.ext.save.job, this.ext.jobLevel(this.ext.save.job))
+                    .map((sp) => `${sp.name} ${sp.mp}MP (${sp.school})`), 'Cast them in battle with SPELL.')),
                 item('STATS', () => this.bonusInfo()),
                 item('CATALOG', () => this.catalogMenu()),
             ],
@@ -366,6 +438,145 @@ export class ExtMenus {
                 item('SKILL CORES (36)', () => info('SKILL CORES', ...SKILL_CORES.map((c) => `${c.name} (${c.school} T${c.tier}) ${c.skill ? 'SKILL' : describeMods(c.mods ?? {})}`))),
                 item('BUFFS & DEBUFFS', () => info('EFFECTS', ...Object.values(EFFECTS).map((e) => `${e.name} (${e.kind}): ${e.description}`))),
                 item('SUBSTATS', () => info('SUBSTATS', ...(Object.keys(SUBSTATS) as (keyof typeof SUBSTATS)[]).map((k) => `${SUBSTATS[k].name}: cap ${SUBSTATS[k].cap}${SUBSTATS[k].unit === '%' ? '%' : ''}`))),
+                item(`LEGENDARIES (${UNIQUES.length})`, () => info('LEGENDARIES', ...UNIQUES.map((x) => `${x.name} (${x.slot}, LV${x.level}): ${describeMods(x.mods)}. ${x.lore}`))),
+                item(`SPELLS (${BATTLE_SPELLS.length})`, () => info('SPELLS', ...BATTLE_SPELLS.map((sp) => `${sp.name} ${sp.mp}MP ${sp.school}`))),
+                item('BOSS TITLES', () => info('BOSS TITLES', ...Object.entries(BOSS_TITLES).map(([ rank, titles ]) => `${rank}: ${titles.join(', ')}`))),
+            ],
+        });
+    }
+
+    // ---- Story ----
+
+    private storyMenu(): MenuNodeFactory {
+        return () => {
+            const progress = this.ext.save.story;
+            const act = currentAct(progress);
+            const hero = this.game.hero;
+            const items: MenuItem[] = [];
+            if (act) {
+                const ready = hero.level >= act.level;
+                items.push(item(`ACT ${act.act}: ${act.title}`.substring(0, 30), () => info(`ACT ${act.act} - ${TIER_NAMES[act.tier]}`,
+                    act.title, act.hook, '',
+                    ...act.chapters.map((c, i) => `${i + 1}. ${c.title} [${c.pillar}] ${c.text}`), '',
+                    `Allies and foes: ${act.npcs.join(', ')}`,
+                    `Monsters: ${act.monsters.join(', ')}`,
+                    ready ? `Villain: ${act.villain}` : `Begins at level ${act.level}.`)));
+                if (ready && !(act.act in progress.checks)) {
+                    items.push(item(`${act.check.skill.toUpperCase()} CHECK DC${act.check.dc}`, () =>
+                        info(act.check.skill.toUpperCase(), act.check.prompt, ...this.ext.rollStoryCheck(hero).lines)));
+                }
+                if (ready) {
+                    items.push(item(`CONFRONT ${act.villain}`.substring(0, 30), () => {
+                        if (!this.game.getEnemy(act.bossEnemy)) {
+                            return info(undefined, 'The villain cannot be found.');
+                        }
+                        this.game.startEncounter(act.bossEnemy, { story: act.act });
+                        return 'close';
+                    }, 'red'));
+                }
+            } else {
+                items.push(item('THY LEGEND IS COMPLETE', () => info('THE END', STORY[STORY.length - 1].finale)));
+            }
+            items.push(item(`ACTS (${progress.completed}/${STORY.length})`, () => info('CAMPAIGN',
+                ...STORY.map((a) => `${a.act <= progress.completed ? '*' : ' '}${a.act}. ${a.title} (LV${a.level}, ${TIER_NAMES[a.tier]})`))));
+            items.push(item('CREDITS', () => info('CREDITS',
+                'Story, characters and places are original to this game.',
+                'Monster types from the System Reference Document 5.1 by Wizards of the Coast LLC, licensed under CC-BY-4.0.')));
+            return { title: 'STORY', items };
+        };
+    }
+
+    // ---- Upgrades, armory and mastery ----
+
+    private upgradeMenu(): MenuNodeFactory {
+        return () => ({
+            title: `UPGRADE (${this.ext.save.shards} SHARDS)`,
+            items: ([ 'weapon', 'armor', 'shield' ] as UpgradeSlot[]).map((slot) => {
+                const gear = this.ext.save.enhancements[slot];
+                const level = gear?.upgrade ?? 0;
+                if (!gear) {
+                    return item(`${slot.toUpperCase()}: none`, () => undefined);
+                }
+                const cost = upgradeCost(level, gear.itemLevel);
+                const odds = Math.round(upgradeChance(level) * 100);
+                return item(`${slot.toUpperCase()} +${level} -> +${level + 1} ${odds}%`.substring(0, 30), () => {
+                    const r = this.ext.upgradeGear(slot, this.game.hero, this.game.party);
+                    this.game.audio.playSound(r.ok ? 'upgradeSuccess' : 'upgradeFail');
+                    return info(undefined, `Cost: ${cost.gold} gold, ${cost.shards} shards.`, r.message);
+                });
+            }),
+        });
+    }
+
+    private armoryMenu(): MenuNodeFactory {
+        return () => ({
+            title: `ARMORY (${this.game.party.gold}G)`,
+            items: armoryStock(Math.round(contentLevel(this.game.hero.level))).map((stock) => item(
+                `${pad(stock.name, 22)}${stock.price}G`,
+                () => info(stock.name, describeMods(stock.mods), this.ext.buyFromArmory(stock, this.game.hero, this.game.party).message))),
+        });
+    }
+
+    private masteryInfo(): MenuInfo {
+        const kills = this.ext.save.weaponKills;
+        const current = this.ext.currentWeaponType(this.game.hero);
+        const lines = [ `Equipped: ${current.toUpperCase()} rank ${this.ext.weaponMasteryRank(this.game.hero)}`,
+            `Bonus: ${describeMods(masteryMods(this.ext.weaponMasteryRank(this.game.hero))) || 'none yet'}`, '' ];
+        Object.keys(kills).sort().forEach((type) => {
+            const rank = masteryRank(kills[type]);
+            const next = MASTERY_THRESHOLDS[rank];
+            lines.push(`${type.toUpperCase()}: rank ${rank}, ${kills[type]} kills${next ? ` (next ${next})` : ' (MAX)'}`);
+        });
+        lines.push('Defeat foes to master the weapon in thy hand.');
+        return info('WEAPON MASTERY', ...lines);
+    }
+
+    // ---- Talents ----
+
+    private talentsMenu(): MenuNodeFactory {
+        return () => ({
+            title: `TALENTS ${this.ext.talentPointsLeft(this.game.hero)} LEFT`,
+            items: [
+                ...(Object.keys(TREE_NAMES) as TreeId[]).map((tree) => item(`${TREE_NAMES[tree]} (${pointsInTree(this.ext.save.talents, tree)})`, () => () => ({
+                    title: TREE_NAMES[tree],
+                    items: TALENTS.filter((tal) => tal.tree === tree).map((tal) => item(
+                        `T${tal.tier} ${pad(tal.name, 16)}${this.ext.save.talents[tal.id] ?? 0}/${tal.maxRank}`,
+                        () => info(tal.name, `Per rank: ${describeMods(tal.perRank)}`, this.ext.learn(tal.id, this.game.hero).message),
+                        (this.ext.save.talents[tal.id] ?? 0) > 0 ? 'blue' : undefined)),
+                }))),
+                item('RESET TALENTS', () => info(undefined, this.ext.respecTalents(this.game.hero, this.game.party).message)),
+            ],
+        });
+    }
+
+    // ---- Forge: aspects and forging potential ----
+
+    private forgeMenu(): MenuNodeFactory {
+        return () => ({
+            title: `FORGE ${this.ext.save.shards} SHARDS`,
+            items: [
+                item(`ASPECT CODEX (${this.ext.save.aspects.length})`, () => () => ({
+                    title: 'IMPRINT ASPECT',
+                    items: this.ext.save.aspects.map((aspect, ai) => item(aspect.name.substring(0, 30), () => () => ({
+                        title: 'IMPRINT ON',
+                        items: ([ 'weapon', 'armor', 'shield' ] as SocketSlot[]).map((slot) => item(slot.toUpperCase(),
+                            () => info(undefined, this.ext.imprint(ai, slot, this.game.hero).message))),
+                    }))),
+                })),
+                ...([ 'weapon', 'armor', 'shield' ] as SocketSlot[]).map((slot) => {
+                    const gear = this.ext.save.enhancements[slot];
+                    return item(`FORGE ${slot.toUpperCase()} (${gear?.potential ?? (gear ? initialPotential(gear) : 0)})`, () => () => ({
+                        title: `FORGE ${slot.toUpperCase()}`,
+                        items: FORGEABLE.map((key) => item(SUBSTATS[key].name,
+                            () => info(undefined, this.ext.forge(slot, key, this.game.hero).message))),
+                    }));
+                }),
+                item('HOW IT WORKS', () => info('FORGE',
+                    'SALVAGE gear in the BAG for shards.',
+                    'Salvaging Legendary or better gear adds its best affix to the ASPECT CODEX.',
+                    `IMPRINT an aspect onto gear for ${IMPRINT_COST} shards.`,
+                    `FORGE an affix for ${FORGE_SHARD_COST} shards; each forge spends 1-4 potential.`,
+                    'When potential runs out, the item is finished.')),
             ],
         });
     }
@@ -430,6 +641,29 @@ export class ExtMenus {
                 const enc = this.ext.currentRunEncounter();
                 items.push(item(`CONTINUE: ${enc?.label ?? ''}`.substring(0, 30), () => this.startRunFight()));
                 items.push(item('ABANDON RUN', () => info(undefined, this.ext.abandonRun())));
+            }
+            const event = currentEvent();
+            const progress = this.ext.eventProgress();
+            items.push(item(`EVENT: ${event.def.name}`, () => info(event.def.name,
+                event.def.description,
+                `Where: ${event.zone.name} (${getCountry(event.zone.country)?.name ?? ''})`,
+                `Progress: ${progress.claimed ? 'COMPLETE' : `${progress.kills}/${event.def.goal}`}`,
+                `Reward: ${event.def.rewardGold} gold, ${event.def.rewardXp} XP`,
+                `Ends in ${minutesLeft(event)} minutes. A new event begins each hour.`)));
+            if (!run) {
+                items.push(item('GROUP FINDER', () => () => ({
+                    title: 'CHOOSE ROLE',
+                    items: ([ 'tank', 'healer', 'dps' ] as Role[]).map((role) => item(
+                        `${role.toUpperCase()} (wait ${queueTime(role)}s, +${groupFinderBonus(role)}G)`,
+                        () => {
+                            const r = this.ext.groupFinder(role, this.game.hero);
+                            if (!r.ok) {
+                                return info(undefined, r.message);
+                            }
+                            this.game.setStatusMessage(r.message);
+                            return this.startRunFight();
+                        })),
+                })));
             }
             (Object.keys(INSTANCE_COUNTS) as InstanceKind[]).forEach((kind) => {
                 items.push(item(`${kind.toUpperCase()}S (${INSTANCE_COUNTS[kind]})`, () => this.instanceList(kind)));

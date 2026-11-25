@@ -1,5 +1,5 @@
 /**
- * Level progression. Levels 1-30 follow the classic Dragon Warrior experience and stat
+ * Level progression. Levels 1-30 follow the classic experience and stat
  * table (keeping the game authentic). Levels 31-720 are Paragon ranks (docs/LEVEL_1_TO_720.md):
  * a tunable quadratic XP curve with milestone rewards instead of unbounded stat growth.
  */

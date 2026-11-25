@@ -31,8 +31,11 @@ import { EASTER_EGGS, InputKey, SequenceRecognizer, discover, discoverEgg, getDi
 import { pickRareBoss } from '@/app/dw/systems/bosses';
 import { seededRng, hashString } from '@/app/dw/systems/rng';
 import { describeLocation } from '@/app/dw/systems/world';
+import { WorldMapView } from '@/app/dw/WorldMapView';
+import { KEYBINDS } from '@/app/dw/Keybinds';
+import { GalleryMode, GalleryView } from '@/app/dw/GalleryView';
 
-type RoamingSubState = 'ROAMING' | 'MENU' | 'TALKING' | 'OVERNIGHT' | 'WARP_SELECTION' | 'CHEAT_SELECTION' | 'BATTLE_SELECTION' | 'WEAPON_SELECTION' | 'ARMOR_SELECTION' | 'SHIELD_SELECTION' | 'GOLD_SELECTION' | 'EXT_MENU';
+type RoamingSubState = 'ROAMING' | 'MENU' | 'TALKING' | 'OVERNIGHT' | 'WARP_SELECTION' | 'CHEAT_SELECTION' | 'BATTLE_SELECTION' | 'WEAPON_SELECTION' | 'ARMOR_SELECTION' | 'SHIELD_SELECTION' | 'GOLD_SELECTION' | 'EXT_MENU' | 'WORLD_MAP' | 'GALLERY';
 
 /** Keys watched for button-code secrets, and the symbol each maps to. */
 const EGG_KEYS: [number, InputKey][] = [
@@ -69,6 +72,8 @@ export class RoamingState extends BaseState {
     private readonly eggKeysDown = new Set<number>();
     private glimmerMillis = 0;
     private lastLocationId?: string;
+    private worldMap?: WorldMapView;
+    private gallery?: GalleryView;
 
     private static readonly OVERNIGHT_DARK_TIME: number = 2500;
 
@@ -97,6 +102,8 @@ export class RoamingState extends BaseState {
         this.updateMethods.set('SHIELD_SELECTION', this.updateShieldSelection.bind(this));
         this.updateMethods.set('GOLD_SELECTION', this.updateGoldSelection.bind(this));
         this.updateMethods.set('EXT_MENU', this.updateExtMenu.bind(this));
+        this.updateMethods.set('WORLD_MAP', this.updateWorldMap.bind(this));
+        this.updateMethods.set('GALLERY', this.updateGallery.bind(this));
         this.extMenus = new ExtMenus(game);
 
         this.textBubble = new TextBubble(this.game);
@@ -332,7 +339,7 @@ export class RoamingState extends BaseState {
                             ...this.game.ext.achievementLines(this.game.hero),
                             `(${this.game.ext.save.eggs.length}/${EASTER_EGGS.length} secrets found.)`,
                         ];
-                        this.game.audio.playSound('openChest');
+                        this.game.audio.playSound('discovery');
                         this.game.setNpcsPaused(true);
                         this.showOneLineConversation(false, ...lines);
                         return true;
@@ -379,7 +386,7 @@ export class RoamingState extends BaseState {
                 ext.save.discoveries.push(d.id); // No battle possible; grant directly
             }
             ext.record('dungeons', 'secrets');
-            this.game.audio.playSound('openChest');
+            this.game.audio.playSound('discovery');
             this.showOneLineConversation(false, d.text,
                 ...ext.grantReward(d.reward, hero, this.game.party, (n) => this.extMenus.addHerbs(n)),
                 ...ext.achievementLines(hero));
@@ -408,6 +415,87 @@ export class RoamingState extends BaseState {
         }
     }
 
+    showWorldMap() {
+        this.game.setNpcsPaused(true);
+        this.worldMap = new WorldMapView(this.game);
+        this.setSubstate('WORLD_MAP');
+    }
+
+    showGallery(mode: GalleryMode) {
+        this.game.setNpcsPaused(true);
+        this.gallery = new GalleryView(this.game, mode);
+        this.setSubstate('GALLERY');
+    }
+
+    private updateGallery(delta: number) {
+        if (!this.gallery || this.gallery.isClosed()) {
+            delete this.gallery;
+            this.startRoaming();
+            return;
+        }
+        this.gallery.update(delta);
+    }
+
+    private updateWorldMap(delta: number) {
+        if (!this.worldMap || this.worldMap.isClosed()) {
+            delete this.worldMap;
+            this.startRoaming();
+            return;
+        }
+        this.worldMap.update(delta);
+    }
+
+    /**
+     * Handles hotkeys while walking around. Returns whether one was pressed.
+     */
+    private handleHotkeys(): boolean {
+        const im: InputManager = this.game.inputManager;
+        if (im.shift()) {
+            return false; // SHIFT+key is reserved for debug keys
+        }
+        const bind = KEYBINDS.find((k) => im.isKeyDown(k.key, true));
+        if (!bind) {
+            return false;
+        }
+        this.game.audio.playSound('menu');
+        switch (bind.action) {
+            case 'worldMap':
+                this.showWorldMap();
+                return true;
+            case 'bestiary':
+                this.showGallery('bestiary');
+                return true;
+            case 'armoryGallery':
+                this.showGallery('armory');
+                return true;
+            case 'items':
+            case 'status':
+                this.game.setNpcsPaused(true);
+                this.setSubstate('MENU');
+                this.showStats = true;
+                if (bind.action === 'items') {
+                    this.showInventory();
+                } else {
+                    this.showStatus();
+                }
+                return true;
+            default: {
+                const result = this.extMenus.hotkey(bind.action);
+                if (!result) {
+                    return false;
+                }
+                this.game.setNpcsPaused(true);
+                if (typeof result === 'function') {
+                    this.extMenu = new ExtMenu(this.game, result);
+                    this.setSubstate('EXT_MENU');
+                } else {
+                    this.showOneLineConversation(false, ...result.lines.filter((line) => line.length));
+                }
+                return true;
+            }
+        }
+    }
+
     /** Announces the zone / sub-zone / settlement when the hero enters a new one. */
     private checkLocation() {
         const map = this.game.getMap();
@@ -427,6 +515,9 @@ export class RoamingState extends BaseState {
             this.checkLocation();
         }
         if (this.sampleEggKeys()) {
+            return;
+        }
+        if (!this.game.hero.isMoving() && this.handleHotkeys()) {
             return;
         }
 
@@ -770,6 +861,8 @@ export class RoamingState extends BaseState {
             this.goldSelectBubble.paint(ctx);
         }
         this.extMenu?.paint(ctx);
+        this.worldMap?.paint(ctx);
+        this.gallery?.paint(ctx);
 
         if (this.overnightDelay) {
             ctx.save();
