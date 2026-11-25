@@ -5,6 +5,7 @@ import { Armor,ArmorData } from './Armor';
 import { Shield,ShieldData } from './Shield';
 import { DwGame } from './DwGame';
 import { GameStudioAdvertState } from './GameStudioAdvertState';
+import { SOUNDS, renderSound } from './systems/chiptune';
 import { EquipmentMap } from './dw';
 
 export interface EquipmentData {
@@ -142,33 +143,12 @@ export class LoadingState extends BaseState {
             void game.assets.addJson('erdricksCave2.json', 'res/maps/erdricksCave2.json');
             void game.assets.addJson('garinham.json', 'res/maps/garinham.json');
             void game.assets.addJson('kol.json', 'res/maps/kol.json');
-            void game.assets.addSound('MUSIC_TITLE_SCREEN', 'res/sound/01 Intro ~ Overture (22khz mono).ogg');
-            void game.assets.addSound('MUSIC_TANTEGEL', 'res/sound/02 Tantegel Castle (22khz mono).ogg');
-            void game.assets.addSound('MUSIC_TANTEGEL_LOWER', 'res/sound/03 Tantegel Castle (Lower) (22khz mono).ogg');
-            void game.assets.addSound('MUSIC_TOWN', 'res/sound/04 Peaceful Village (22khz mono).ogg');
-            void game.assets.addSound('MUSIC_OVERWORLD', 'res/sound/05 Kingdom of Alefgard (22khz mono).ogg');
-            void game.assets.addSound('MUSIC_BATTLE', 'res/sound/14 A Monster Draws Near (16khz mono).ogg', 2.32);
-            void game.assets.addSound('MUSIC_DUNGEON_FLOOR_1', 'res/sound/06 Dark Dungeon - Floor 1 (22khz mono).ogg');
-            void game.assets.addSound('dead', 'res/sound/20 Thou Hast Died (22khz mono).ogg');
-            void game.assets.addSound('overnight', 'res/sound/21 Special Item (22khz mono).ogg');
-            void game.assets.addSound('victory', 'res/sound/25 Victory (22khz mono).ogg', 0, false);
-            void game.assets.addSound('stairs', 'res/sound/29 Stairs Up (22khz mono).wav');
-            void game.assets.addSound('run', 'res/sound/30 Stairs Down (22khz mono).wav');
-            void game.assets.addSound('menu', 'res/sound/32 Menu Button (22khz mono).wav');
-            void game.assets.addSound('confirmation', 'res/sound/33 Confirmation (22khz mono).wav');
-            void game.assets.addSound('hit', 'res/sound/34 Hit (22khz mono).wav');
-            void game.assets.addSound('excellentMove', 'res/sound/35 Excellent Move (22khz mono).wav');
-            void game.assets.addSound('attack', 'res/sound/36 Attack (22khz mono).ogg');
-            void game.assets.addSound('receiveDamage', 'res/sound/37 Receive Damage (22khz mono).wav');
-            void game.assets.addSound('prepareToAttack', 'res/sound/39 Prepare to Attack (22khz mono).wav');
-            void game.assets.addSound('missed1', 'res/sound/40 Missed! (22khz mono).wav');
-            void game.assets.addSound('missed2', 'res/sound/41 Missed! (2) (22khz mono).wav');
-            void game.assets.addSound('bump', 'res/sound/42 Bumping into Walls (22khz mono).wav');
-            void game.assets.addSound('castSpell', 'res/sound/43 Cast A Spell (22khz mono).ogg');
-            void game.assets.addSound('openChest', 'res/sound/44 Open Treasure (22khz mono).ogg');
-            void game.assets.addSound('door', 'res/sound/45 Open Door (22khz mono).ogg');
-            void game.assets.addSound('breatheFire', 'res/sound/46 Breathe Fire (22khz mono).ogg');
-            void game.assets.addSound('talk', 'res/sound/Talk SFX.wav');
+            // All 48 sounds are original chiptune generated in code (see systems/chiptune.ts),
+            // rendered to WAV in memory and registered under the ids the game plays them by.
+            for (const sound of SOUNDS) {
+                const url = URL.createObjectURL(new Blob([ renderSound(sound) ], { type: 'audio/wav' }));
+                void game.assets.addSound(sound.id, url, 0, sound.loop);
+            }
             game.assets.onLoad(() => {
 
                 // TODO: This could be done much, much more cleanly

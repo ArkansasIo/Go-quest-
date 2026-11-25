@@ -339,7 +339,7 @@ export class RoamingState extends BaseState {
                             ...this.game.ext.achievementLines(this.game.hero),
                             `(${this.game.ext.save.eggs.length}/${EASTER_EGGS.length} secrets found.)`,
                         ];
-                        this.game.audio.playSound('openChest');
+                        this.game.audio.playSound('discovery');
                         this.game.setNpcsPaused(true);
                         this.showOneLineConversation(false, ...lines);
                         return true;
@@ -386,7 +386,7 @@ export class RoamingState extends BaseState {
                 ext.save.discoveries.push(d.id); // No battle possible; grant directly
             }
             ext.record('dungeons', 'secrets');
-            this.game.audio.playSound('openChest');
+            this.game.audio.playSound('discovery');
             this.showOneLineConversation(false, d.text,
                 ...ext.grantReward(d.reward, hero, this.game.party, (n) => this.extMenus.addHerbs(n)),
                 ...ext.achievementLines(hero));

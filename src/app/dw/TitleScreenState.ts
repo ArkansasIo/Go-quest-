@@ -36,7 +36,11 @@ export class TitleScreenState extends BaseState {
     override update(delta: number) {
 
         this.handleDefaultKeys();
+        const wasFlashing = this.art.isFlashing();
         this.art.update(delta);
+        if (this.art.isFlashing() && !wasFlashing) {
+            this.game.audio.playSound('lightning');
+        }
 
         if (this.delay?.update(delta)) {
             this.delay.reset();

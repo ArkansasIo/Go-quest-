@@ -283,7 +283,8 @@ Thy gold increases by ${result.gold}.`;
 
         this.textBubble.addToConversation({ text: text, music: 'victory' });
         result.lines.forEach((line) => {
-            this.textBubble.addToConversation({ text: line });
+            // The level-up jingle plays as the promotion line appears
+            this.textBubble.addToConversation(line.includes('promoted') ? { text: line, sound: 'levelUp' } : { text: line });
         });
 
         if (this.options.story) {
@@ -494,6 +495,10 @@ Thy gold increases by ${result.gold}.`;
 
         super.enter();
         this.commandExecuting = false;
+        const music = this.battleMusic();
+        if (music) {
+            this.game.audio.playMusic(music);
+        }
         const conversation: Conversation = new Conversation(this.game);
         let intro = `A ${this.enemy.name} draws near!`;
         if (this.boss && !this.boss.fixed) {
@@ -504,6 +509,24 @@ Thy gold increases by ${result.gold}.`;
         }
         conversation.addSegment({ text: intro + '  Command?' });
         this.textBubble.setConversation(conversation);
+    }
+
+    /** Special battle music for bosses, story villains, events and raids. */
+    private battleMusic(): string | undefined {
+        if (this.options.story === 12) {
+            return 'MUSIC_FINALE';
+        }
+        if (this.options.story || this.boss) {
+            return 'MUSIC_BOSS';
+        }
+        if (this.options.event) {
+            return 'MUSIC_EVENT';
+        }
+        const run = this.game.ext.save.activeRun;
+        if (this.options.instance && run?.instanceId.startsWith('raid_')) {
+            return 'MUSIC_RAID';
+        }
+        return undefined;
     }
 
     getEnemy(): Enemy {

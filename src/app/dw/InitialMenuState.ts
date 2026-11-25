@@ -4,6 +4,7 @@ import { ExtMenu, MenuItem, MenuNodeFactory, MenuResult } from './ExtMenu';
 import { AdventureLogSummary, deleteAdventureLog, getAdventureLogSummaries } from './AdventureLog';
 import { GameOptions, drawTitleText, applyScreenSize, loadOptions, nextScreenSize, saveOptions } from './GameOptions';
 import { keybindHelpLines } from './Keybinds';
+import { MUSIC_COUNT, SFX_COUNT, SOUNDS } from './systems/chiptune';
 
 const item = (label: string, run: () => MenuResult, color?: string): MenuItem => ({ label, run, color });
 
@@ -54,6 +55,17 @@ export const optionsMenu = (game: DwGame): MenuNodeFactory => {
                 item(`ENCOUNTERS:   ${options.encounters ? 'ON' : 'OFF'}`, () => {
                     return update({ encounters: !options.encounters });
                 }),
+                item(`SOUND TEST (${SOUNDS.length})`, () => () => ({
+                    title: `SOUND TEST ${MUSIC_COUNT} MUSIC ${SFX_COUNT} SFX`,
+                    items: SOUNDS.map((sound) => item(`${sound.kind === 'music' ? 'MUSIC' : 'SFX  '} ${sound.name}`.substring(0, 30), () => {
+                        if (sound.kind === 'music') {
+                            game.audio.playMusic(sound.id, sound.loop);
+                        } else {
+                            game.audio.playSound(sound.id);
+                        }
+                        return undefined;
+                    })),
+                })),
                 item('CONTROLS', () => ({
                     title: 'CONTROLS',
                     lines: keybindHelpLines(),

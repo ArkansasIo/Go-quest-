@@ -107,6 +107,7 @@ export class ExtMenus {
                     return info(undefined, 'Thou canst not save inside a dungeon.');
                 }
                 this.game.saveAdventureLog();
+                this.game.audio.playSound('save');
                 return info(undefined, 'Thy deeds have been recorded in the Adventure Log.');
             case 'help': return info('KEYBINDS', ...keybindHelpLines());
             default: return undefined;
@@ -344,6 +345,7 @@ export class ExtMenus {
                         return info(undefined, 'Thou canst not save inside a dungeon.');
                     }
                     this.game.saveAdventureLog();
+                    this.game.audio.playSound('save');
                     return info(undefined, 'Thy deeds have been recorded in the Adventure Log.');
                 }),
                 item('OPTIONS', () => optionsMenu(this.game)),
@@ -497,9 +499,11 @@ export class ExtMenus {
                 }
                 const cost = upgradeCost(level, gear.itemLevel);
                 const odds = Math.round(upgradeChance(level) * 100);
-                return item(`${slot.toUpperCase()} +${level} -> +${level + 1} ${odds}%`.substring(0, 30), () => info(undefined,
-                    `Cost: ${cost.gold} gold, ${cost.shards} shards.`,
-                    this.ext.upgradeGear(slot, this.game.hero, this.game.party).message));
+                return item(`${slot.toUpperCase()} +${level} -> +${level + 1} ${odds}%`.substring(0, 30), () => {
+                    const r = this.ext.upgradeGear(slot, this.game.hero, this.game.party);
+                    this.game.audio.playSound(r.ok ? 'upgradeSuccess' : 'upgradeFail');
+                    return info(undefined, `Cost: ${cost.gold} gold, ${cost.shards} shards.`, r.message);
+                });
             }),
         });
     }
