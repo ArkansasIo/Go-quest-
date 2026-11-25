@@ -1,0 +1,360 @@
+import { afterEach, beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
+import { DwGame } from '@/app/dw/DwGame';
+import { ColoredTextSpan } from '@/app/dw/Bubble';
+import {
+    AdventureLog,
+    createNewAdventureLog,
+    getAdventureLogSummaries,
+    loadAdventureLog,
+    saveAdventureLog,
+} from '@/app/dw/AdventureLog';
+import { EnemyData } from '@/app/dw/Enemy';
+import { BattleState } from '@/app/dw/BattleState';
+import { BattleTransitionState } from '@/app/dw/BattleTransitionState';
+import { Shield } from '@/app/dw/Shield';
+
+const mockFont = { cellW: 8, cellH: 9 };
+
+const mockWeapons = { club: { name: 'club' }, bambooStick: { name: 'bambooStick' } };
+const mockArmor = { clothes: { name: 'clothes' }, leather: { name: 'leather' } };
+const mockShields = { smallShield: { name: 'smallShield' }, largeShield: { name: 'largeShield' } };
+
+const smallShield = new Shield('smallShield', { name: 'smallShield', displayName: 'Small Shield', defense: 4 });
+const largeShield = new Shield('largeShield', { name: 'largeShield', displayName: 'Large Shield', defense: 10 });
+const mockShieldArray: Shield[] = [ smallShield, largeShield ];
+
+const slimeData: EnemyData = {
+    name: 'Slime',
+    image: 'Slime',
+    damagedImage: 'Slime_damaged',
+    str: 5,
+    agility: 3,
+    hp: 3,
+    resist: {},
+    dodge: 1,
+    xp: 1,
+    gp: 1,
+    ai: 'attackOnly',
+};
+
+const drakeeData: EnemyData = {
+    name: 'Drakee',
+    image: 'Drakee',
+    damagedImage: 'Drakee_damaged',
+    str: 9,
+    agility: 6,
+    hp: [ 5, 6 ],
+    resist: {},
+    dodge: 1,
+    xp: 2,
+    gp: 2,
+    ai: 'attackOnly',
+};
+
+const mockEnemies: Record<string, EnemyData> = { Slime: slimeData, Drakee: drakeeData };
+
+describe('DwGame', () => {
+    let game: DwGame;
+
+    beforeEach(() => {
+        game = new DwGame();
+        game.assets.set('weapons', mockWeapons);
+        game.assets.set('armor', mockArmor);
+        game.assets.set('shields', mockShields);
+        game.assets.set('shieldArray', mockShieldArray);
+        localStorage.clear();
+    });
+
+    afterEach(() => {
+        localStorage.clear();
+    });
+
+    describe('loadAdventureLog()', () => {
+        describe('when called with no ID', () => {
+            beforeEach(() => {
+                game.loadAdventureLog();
+            });
+
+            it('initializes hero stats to defaults', () => {
+                expect(game.hero.hp).toBe(15);
+                expect(game.hero.maxHp).toBe(15);
+                expect(game.hero.level).toBe(1);
+                expect(game.hero.exp).toBe(0);
+                expect(game.hero.strength).toBe(4);
+                expect(game.hero.agility).toBe(4);
+            });
+
+            it('initializes party gold from the log', () => {
+                expect(game.party.gold).toBe(120);
+            });
+
+            it('initializes party inventory from the log', () => {
+                expect(game.party.getInventory().getSize()).toBe(6);
+            });
+
+            it('does not save to localStorage', () => {
+                expect(localStorage.length).toBe(0);
+            });
+        });
+
+        describe('when called with an ID that exists in localStorage', () => {
+            let storedLog: AdventureLog;
+
+            beforeEach(() => {
+                storedLog = createNewAdventureLog();
+                storedLog.hero.hp = 8;
+                storedLog.hero.maxHp = 20;
+                storedLog.hero.mp = 9;
+                storedLog.hero.maxMp = 21;
+                storedLog.hero.level = 3;
+                storedLog.hero.exp = 450;
+                storedLog.hero.strength = 10;
+                storedLog.hero.agility = 11;
+                storedLog.party.gold = 500;
+                storedLog.party.inventory = [ 'Herb', 'Torch' ];
+                saveAdventureLog(storedLog);
+
+                game.loadAdventureLog(storedLog.id);
+            });
+
+            it('restores hero HP and MP from the stored log', () => {
+                expect(game.hero.hp).toBe(8);
+                expect(game.hero.maxHp).toBe(20);
+                expect(game.hero.mp).toBe(9);
+                expect(game.hero.maxMp).toBe(21);
+            });
+
+            it('restores hero level and exp from the stored log', () => {
+                expect(game.hero.level).toBe(3);
+                expect(game.hero.exp).toBe(450);
+            });
+
+            it('restores hero stats from the stored log', () => {
+                expect(game.hero.strength).toBe(10);
+                expect(game.hero.agility).toBe(11);
+            });
+
+            it('restores party gold from the stored log', () => {
+                expect(game.party.gold).toBe(500);
+            });
+
+            it('restores party inventory from the stored log', () => {
+                const items = game.party.getInventory().getItems();
+                expect(items).toHaveLength(2);
+                expect(items[0].name).toBe('Herb');
+                expect(items[1].name).toBe('Torch');
+            });
+        });
+
+        describe('when called with an ID that does not exist in localStorage', () => {
+            beforeEach(() => {
+                game.loadAdventureLog('nonexistent-uuid');
+            });
+
+            it('falls back to a new adventure log', () => {
+                expect(game.hero.hp).toBe(15);
+                expect(game.hero.level).toBe(1);
+            });
+        });
+    });
+
+    describe('getEnemyDatas()', () => {
+
+        beforeEach(() => {
+            game.assets.set('enemies', mockEnemies);
+        });
+
+        it('returns all enemies as an array', () => {
+            expect(game.getEnemyDatas()).toHaveLength(2);
+        });
+
+        it('contains the expected enemy data objects', () => {
+            const datas = game.getEnemyDatas();
+            expect(datas).toContainEqual(slimeData);
+            expect(datas).toContainEqual(drakeeData);
+        });
+    });
+
+    describe('startEncounter()', () => {
+
+        beforeEach(() => {
+            game.assets.set('font', mockFont);
+            game.assets.set('enemies', mockEnemies);
+            vi.spyOn(game.audio, 'playMusic').mockImplementation(() => {});
+            vi.spyOn(BattleState.prototype, 'createScreenshot').mockReturnValue(document.createElement('canvas'));
+        });
+
+        it('transitions the game to a BattleTransitionState', () => {
+            const setStateSpy = vi.spyOn(game, 'setState').mockImplementation(() => {});
+            game.startEncounter('Slime');
+            expect(setStateSpy).toHaveBeenCalledExactlyOnceWith(expect.any(BattleTransitionState));
+        });
+    });
+
+    describe('saveAdventureLog()', () => {
+        beforeEach(() => {
+            game.loadAdventureLog();
+        });
+
+        it('persists current hero stats into the log', () => {
+            game.hero.hp = 7;
+            game.hero.maxHp = 22;
+            game.hero.mp = 10;
+            game.hero.maxMp = 20;
+            game.hero.level = 4;
+            game.hero.exp = 800;
+            game.saveAdventureLog();
+
+            const log = loadAdventureLog(game.getAdventureLog().id);
+            expect(log.hero.hp).toBe(7);
+            expect(log.hero.maxHp).toBe(22);
+            expect(log.hero.mp).toBe(10);
+            expect(log.hero.maxMp).toBe(20);
+            expect(log.hero.level).toBe(4);
+            expect(log.hero.exp).toBe(800);
+        });
+
+        it('persists current party gold into the log', () => {
+            game.party.gold = 999;
+            game.saveAdventureLog();
+            expect(loadAdventureLog(game.getAdventureLog().id).party.gold).toBe(999);
+        });
+
+        it('updates modifiedAt on every save', () => {
+            vi.useFakeTimers();
+            game.saveAdventureLog();
+            const firstModifiedAt = loadAdventureLog(game.getAdventureLog().id).modifiedAt;
+
+            vi.advanceTimersByTime(1000);
+            game.saveAdventureLog();
+            expect(loadAdventureLog(game.getAdventureLog().id).modifiedAt).not.toBe(firstModifiedAt);
+            vi.useRealTimers();
+        });
+
+        it('adds an entry to the adventure log index', () => {
+            game.saveAdventureLog();
+            const summaries = getAdventureLogSummaries();
+            expect(summaries).toHaveLength(1);
+            expect(summaries[0].id).toBe(game.getAdventureLog().id);
+        });
+
+        it('updates the existing index entry rather than duplicating it', () => {
+            game.saveAdventureLog();
+            game.hero.level = 2;
+            game.saveAdventureLog();
+
+            const summaries = getAdventureLogSummaries();
+            expect(summaries).toHaveLength(1);
+            expect(summaries[0].level).toBe(2);
+        });
+
+        it('accumulates entries for distinct adventure logs', () => {
+            game.saveAdventureLog();
+
+            const game2 = new DwGame();
+            game2.assets.set('weapons', mockWeapons);
+            game2.assets.set('armor', mockArmor);
+            game2.assets.set('shields', mockShields);
+            game2.assets.set('shieldArray', mockShieldArray);
+            game2.loadAdventureLog();
+            game2.saveAdventureLog();
+
+            expect(getAdventureLogSummaries()).toHaveLength(2);
+        });
+    });
+
+    describe('getShieldArray()', () => {
+
+        it('returns the shield array from assets', () => {
+            expect(game.getShieldArray()).toEqual(mockShieldArray);
+        });
+    });
+
+    describe('setShield()', () => {
+
+        beforeEach(() => {
+            game.loadAdventureLog();
+        });
+
+        it('updates the hero shield', () => {
+            game.setShield(largeShield);
+
+            expect(game.hero.shield).toEqual(largeShield);
+        });
+
+        it('displays a status message with the shield name', () => {
+            const setStatusMessage = vi.spyOn(game, 'setStatusMessage');
+
+            game.setShield(largeShield);
+
+            expect(setStatusMessage).toHaveBeenCalledWith('Shield changed to: largeShield');
+        });
+    });
+
+    describe('drawStringWithColor()', () => {
+
+        const fontW = mockFont.cellW;
+        let drawStringSpy: MockInstance<DwGame['drawString']>;
+
+        beforeEach(() => {
+            game.assets.set('font', mockFont);
+            drawStringSpy = vi.spyOn(game, 'drawString').mockImplementation(() => {});
+        });
+
+        it('calls drawString once with the full text when spans is empty', () => {
+            game.drawStringWithColor('Hello', [], 10, 20);
+            expect(drawStringSpy).toHaveBeenCalledExactlyOnceWith('Hello', 10, 20);
+        });
+
+        it('renders a span covering the entire text', () => {
+            const spans: ColoredTextSpan[] = [ { colorId: 'blue', offs: 0, count: 5 } ];
+            game.drawStringWithColor('Hello', spans, 10, 20);
+            expect(drawStringSpy).toHaveBeenCalledExactlyOnceWith('Hello', 10, 20, 'blue');
+        });
+
+        it('renders plain text before the span, then the colored span, then plain text after', () => {
+            const spans: ColoredTextSpan[] = [ { colorId: 'red', offs: 6, count: 5 } ];
+            game.drawStringWithColor('Hello world!', spans, 0, 0);
+            expect(drawStringSpy).toHaveBeenCalledTimes(3);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(1, 'Hello ', 0, 0);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(2, 'world', 6 * fontW, 0, 'red');
+            expect(drawStringSpy).toHaveBeenNthCalledWith(3, '!', 11 * fontW, 0);
+        });
+
+        it('renders a span at the start with plain text after', () => {
+            const spans: ColoredTextSpan[] = [ { colorId: 'green', offs: 0, count: 3 } ];
+            game.drawStringWithColor('Go now', spans, 4, 8);
+            expect(drawStringSpy).toHaveBeenCalledTimes(2);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(1, 'Go ', 4, 8, 'green');
+            expect(drawStringSpy).toHaveBeenNthCalledWith(2, 'now', 4 + 3 * fontW, 8);
+        });
+
+        it('renders plain text before a span at the end', () => {
+            const spans: ColoredTextSpan[] = [ { colorId: 'yellow', offs: 3, count: 3 } ];
+            game.drawStringWithColor('Go now', spans, 0, 0);
+            expect(drawStringSpy).toHaveBeenCalledTimes(2);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(1, 'Go ', 0, 0);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(2, 'now', 3 * fontW, 0, 'yellow');
+        });
+
+        it('renders multiple non-adjacent spans with plain text between them', () => {
+            const spans: ColoredTextSpan[] = [
+                { colorId: 'red', offs: 0, count: 1 },
+                { colorId: 'blue', offs: 6, count: 1 },
+            ];
+            game.drawStringWithColor('A and B', spans, 0, 0);
+            expect(drawStringSpy).toHaveBeenCalledTimes(3);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(1, 'A', 0, 0, 'red');
+            expect(drawStringSpy).toHaveBeenNthCalledWith(2, ' and ', 1 * fontW, 0);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(3, 'B', 6 * fontW, 0, 'blue');
+        });
+
+        it('advances drawX correctly for each segment', () => {
+            const spans: ColoredTextSpan[] = [ { colorId: 'red', offs: 3, count: 2 } ];
+            game.drawStringWithColor('abcDEfg', spans, 100, 50);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(1, 'abc', 100, 50);
+            expect(drawStringSpy).toHaveBeenNthCalledWith(2, 'DE', 100 + 3 * fontW, 50, 'red');
+            expect(drawStringSpy).toHaveBeenNthCalledWith(3, 'fg', 100 + 5 * fontW, 50);
+        });
+    });
+});

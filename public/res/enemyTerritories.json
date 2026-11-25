@@ -1,0 +1,10 @@
+[
+  [ "Slime", "RedSlime" ],
+  [ "Slime", "RedSlime", "Drakee" ],
+  [ "Slime", "RedSlime", "Drakee", "Ghost" ],
+  [ "RedSlime", "Drakee", "Ghost", "Magician" ],
+  [ "Ghost", "Magician", "Magidrakee", "Scorpion" ],
+  [ "Ghost", "Magician", "Magidrakee", "Scorpion", "Skeleton" ],
+  [ "Magidrakee", "Scorpion", "Skeleton", "Warlock", "Wolf" ],
+  [ "Skeleton", "Warlock", "Wolf", "MetalScorpion" ]
+]
