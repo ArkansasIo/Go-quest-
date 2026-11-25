@@ -1,32 +1,61 @@
 <!doctype html>
 <html lang="en">
-
 <head>
-   <title>Dragon Warrior in your browser!</title>
    <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <meta name="theme-color" content="#080c12">
+   <meta name="description" content="Follow the lantern-lit road across Aelmoor and recover the twelve pages of the Ember Codex.">
+   <title>Lanterns of Aelmoor — The Ember Codex</title>
    <link rel="stylesheet" type="text/css" href="css/dw.css">
    <script type="module" src="src/app/dw.ts"></script>
 </head>
-
 <body>
-   
-   <h1>Dragon Warrior in your browser!</h1>
-   
-   <div id='parent'></div>
-   
-   <h3>Controls:</h3>
-   <ol>
-      <li><b>Arrow Keys:</b> Move around
-      <li><b>z:</b> Take action
-      <li><b>x:</b> Cancel action
-   </ol>
-   
-   <h3>Cheats:</h3>
-   <ol>
-      <li><b>Shift+A:</b> Cycle through available armors
-      <li><b>Shift+W:</b> Cycle through available weapons
-   </ol>
-   
-</body>
+   <div class="app-shell">
+      <aside class="realm-nav" aria-label="Game navigation">
+         <a class="brand-mark" href="#play" aria-label="Lanterns of Aelmoor home">
+            <span class="brand-kicker">THE LANTERN PACT</span>
+            <span class="brand-title">AELMOOR</span>
+         </a>
+         <nav>
+            <a class="nav-link active" href="#play"><span class="nav-index">01</span> Enter the realm</a>
+            <a class="nav-link" href="#story"><span class="nav-index">02</span> The story</a>
+            <a class="nav-link" href="#controls"><span class="nav-index">03</span> Controls</a>
+         </nav>
+         <div class="nav-footnote">ONE LANTERN<br>STILL BURNS</div>
+      </aside>
 
+      <main class="game-main">
+         <header class="page-heading">
+            <p class="eyebrow">A D20 FANTASY ADVENTURE</p>
+            <h1>Lanterns of Aelmoor</h1>
+            <p class="subtitle">Twelve pages. Twelve tyrants. One light left.</p>
+         </header>
+
+         <section class="game-frame" id="play" aria-label="Game screen">
+            <div id="parent"></div>
+         </section>
+
+         <section class="story-panel" id="story">
+            <div class="section-heading">
+               <span class="section-index">I</span>
+               <h2>The Ember Codex</h2>
+            </div>
+            <p>For three centuries, the Lantern Pact kept the dark beyond Aelmoor. Then the sun failed over Duskmoor, and the Ember Codex was torn into twelve pages. You wake in Elderwood with ash on your hands and one lantern still burning. The road is open.</p>
+         </section>
+
+         <section class="controls-panel" id="controls">
+            <div class="section-heading">
+               <span class="section-index">II</span>
+               <h2>Field controls</h2>
+            </div>
+            <div class="control-list">
+               <div><kbd>↑ ↓ ← →</kbd><span>Move through the realm</span></div>
+               <div><kbd>Z</kbd><span>Choose / take action</span></div>
+               <div><kbd>X</kbd><span>Cancel / go back</span></div>
+            </div>
+         </section>
+         <footer class="page-footer">AELMOOR · THE LONG NIGHT · THE LANTERN PACT</footer>
+      </main>
+   </div>
+</body>
 </html>

@@ -122,6 +122,10 @@ export class LoadingState extends BaseState {
             const game: DwGame = this.game;
 
             game.assets.addImage('title', 'res/title.png');
+            game.assets.addImage('aelmoorTitleBg', 'res/aelmoor/title_bg.png');
+            game.assets.addImage('aelmoorHero', 'res/aelmoor/hero.png');
+            game.assets.addImage('aelmoorCodex', 'res/aelmoor/codex.png');
+            game.assets.addImage('aelmoorDuskKing', 'res/aelmoor/dusk_king.png');
             game.assets.addSpriteSheet('hero', 'res/hero.png', 16, 16, 1, 1, true);
             game.assets.addSpriteSheet('npcs', 'res/npcs.png', 16, 16, 1, 1, true);
             game.assets.addImage('battleBG', 'res/battle_backgrounds.png');
