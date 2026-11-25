@@ -74,7 +74,7 @@ export interface PartyLike {
     gold: number;
 }
 
-/** Dragon Warrior caps gold at 9999 on screen; the extended game allows more. */
+/** The classic game caps gold at 9999; the extended game allows more. */
 export const GOLD_CAP = 999999;
 
 export interface VictoryContext {
@@ -108,7 +108,7 @@ export class Extended {
     // Equipment enhancements and derived stats
 
     /**
-     * Makes sure each equipped Dragon Warrior item has an enhancement record. Equipping a
+     * Makes sure each equipped classic item has an enhancement record. Equipping a
      * different item (shop, chest, cheat) gives it a fresh Common enhancement.
      */
     syncEnhancements(hero: HeroLike): void {
@@ -742,6 +742,10 @@ export class Extended {
         lines.push(...this.gainExperience(hero, xp));
 
         this.record('kills', 'kills');
+        if (ctx.enemyName.startsWith('gen_') && !this.save.bestiarySeen.includes(ctx.enemyName)) {
+            this.save.bestiarySeen.push(ctx.enemyName);
+            lines.push('A new entry in thy bestiary!');
+        }
         const masteryLine = this.addWeaponKill(hero);
         if (masteryLine) {
             lines.push(masteryLine);

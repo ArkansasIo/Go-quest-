@@ -1,34 +1,64 @@
 
-# DragonWarriorJS - A recreation of Dragon Warrior for the NES in TypeScript
-![Build](https://github.com/bobbylight/DragonWarriorJS/actions/workflows/build.yml/badge.svg)
-![CodeQL](https://github.com/bobbylight/DragonWarriorJS/actions/workflows/codeql-analysis.yml/badge.svg)
+# Souldcrest Stormfire
 
-Like it says on the tin.  This reproduction will try to be as authentic as
-possible, warts and all.
+A retro, 8-bit style RPG in TypeScript by **ArkansasIo**, rendered on `canvas` and built with Vite.
 
-I'm trying to use the GitHub issue tracker to track bugs and what I'm working on next.
-But in general, what's done is:
+A storm-touched hero bears the Souldcrest, the mark of the wardens who once sealed away the
+Stormfire, and must gather five soulglass shards before an ancient storm drake sets it free.
 
-* Map loading, motion, moving in and out of towns
-* Collision detection
-* Conversations with NPCs
-* Buying goods from a shop
-* Opening doors if you have a key
-* Battles (attack only)
-* Sound
+## Features
 
-What's currently being worked on (half-baked):
+* **12-act story** in four tiers of play, structured on D&D 5e adventure guidance, with a d20
+  ability check against a DC in every act (MENU > STORY)
+* **Open world**: 3 continents, 9 countries, 90 zones with 270 sub-zones, 9 biomes, cities,
+  towns, villages and 27 underground zones, plus a full **world map** (press **M**)
+* **Characters**: 9 races, 18 classes with subclasses, 11 advanced jobs, 9 attributes,
+  talent trees, skill cores, class spells and levels 1-720 (classic 30 + Paragon)
+* **Gear**: rarity 1-9, gear tiers, affixes, gems and runes, legendary sets and uniques,
+  upgrades +1 to +15, weapon mastery, salvage, aspects and forging potential, a town armory
+* **Adventure**: dungeons, raids, trials and towers, a group finder, world events,
+  world tiers 1-9, a 355-boss journal, hidden discoveries and secret button codes
+* **Life**: 18 professions with perk trees, companions, 120 mounts, seasons and achievements
+* **Title menu** with continue, new game, load/delete saves and options (screen size,
+  sound, encounters), and hotkeys for every menu (press **H** in game)
 
-* Staying overnight at an inn
-* Magic outside of battle
-
-# To test this out
+## Playing
 
 ```bash
 npm install
 npm run dev
-# View http://localhost:5173
+# Open http://localhost:5173
 ```
+
+| Key | Action |
+|---|---|
+| Arrows | Move |
+| Z | Action / command menu / confirm |
+| X | Cancel / back |
+| Enter | Start |
+| M | World map |
+| Space | Main menu |
+| H | List every hotkey |
+
+## Development
+
+```bash
+npm run tsc     # typecheck
+npm run lint    # lint
+npm run test    # unit tests
+npm run build   # production build to dist/
+```
+
+The extended game systems are plain TypeScript modules in
+[src/app/dw/systems](src/app/dw/systems) with unit tests alongside them.
+
+## Credits
+
+* Engine originally written by [bobbylight](https://github.com/bobbylight), using the
+  [gtp](https://github.com/bobbylight/gtp) game library.
+* Story, characters and places of Souldcrest Stormfire are original.
+* Monster types in the story come from the System Reference Document 5.1 by Wizards of the
+  Coast LLC, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
 
 # Editing the Map Data
 The game is mostly data-driven. The maps are stored in [Tiled](https://www.mapeditor.org/)

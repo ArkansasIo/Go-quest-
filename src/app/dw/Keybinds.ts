@@ -7,7 +7,7 @@ import { Keys } from 'gtp';
 export type HotkeyAction =
     | 'worldMap' | 'mainMenu' | 'gear' | 'character' | 'items' | 'bag' | 'journal' | 'talents'
     | 'spells' | 'cores' | 'forge' | 'season' | 'adventure' | 'atlas' | 'worldTier' | 'ride'
-    | 'professions' | 'companion' | 'save' | 'help' | 'status';
+    | 'professions' | 'companion' | 'save' | 'help' | 'status' | 'bestiary' | 'armoryGallery';
 
 export interface Keybind {
     key: number;
@@ -41,6 +41,8 @@ export const KEYBINDS: Keybind[] = [
     bind(Keys.KEY_S, 'S', 'save', 'Save game'),
     bind(Keys.KEY_H, 'H', 'help', 'Help (this list)'),
     bind(Keys.KEY_1, '1', 'status', 'Status'),
+    bind(Keys.KEY_2, '2', 'bestiary', 'Bestiary (420 monsters)'),
+    bind(Keys.KEY_3, '3', 'armoryGallery', 'Armory gallery'),
 ];
 
 /** The fixed movement and confirm keys, for the help screen. */

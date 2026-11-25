@@ -33,8 +33,9 @@ import { seededRng, hashString } from '@/app/dw/systems/rng';
 import { describeLocation } from '@/app/dw/systems/world';
 import { WorldMapView } from '@/app/dw/WorldMapView';
 import { KEYBINDS } from '@/app/dw/Keybinds';
+import { GalleryMode, GalleryView } from '@/app/dw/GalleryView';
 
-type RoamingSubState = 'ROAMING' | 'MENU' | 'TALKING' | 'OVERNIGHT' | 'WARP_SELECTION' | 'CHEAT_SELECTION' | 'BATTLE_SELECTION' | 'WEAPON_SELECTION' | 'ARMOR_SELECTION' | 'SHIELD_SELECTION' | 'GOLD_SELECTION' | 'EXT_MENU' | 'WORLD_MAP';
+type RoamingSubState = 'ROAMING' | 'MENU' | 'TALKING' | 'OVERNIGHT' | 'WARP_SELECTION' | 'CHEAT_SELECTION' | 'BATTLE_SELECTION' | 'WEAPON_SELECTION' | 'ARMOR_SELECTION' | 'SHIELD_SELECTION' | 'GOLD_SELECTION' | 'EXT_MENU' | 'WORLD_MAP' | 'GALLERY';
 
 /** Keys watched for button-code secrets, and the symbol each maps to. */
 const EGG_KEYS: [number, InputKey][] = [
@@ -72,6 +73,7 @@ export class RoamingState extends BaseState {
     private glimmerMillis = 0;
     private lastLocationId?: string;
     private worldMap?: WorldMapView;
+    private gallery?: GalleryView;
 
     private static readonly OVERNIGHT_DARK_TIME: number = 2500;
 
@@ -101,6 +103,7 @@ export class RoamingState extends BaseState {
         this.updateMethods.set('GOLD_SELECTION', this.updateGoldSelection.bind(this));
         this.updateMethods.set('EXT_MENU', this.updateExtMenu.bind(this));
         this.updateMethods.set('WORLD_MAP', this.updateWorldMap.bind(this));
+        this.updateMethods.set('GALLERY', this.updateGallery.bind(this));
         this.extMenus = new ExtMenus(game);
 
         this.textBubble = new TextBubble(this.game);
@@ -418,6 +421,21 @@ export class RoamingState extends BaseState {
         this.setSubstate('WORLD_MAP');
     }
 
+    showGallery(mode: GalleryMode) {
+        this.game.setNpcsPaused(true);
+        this.gallery = new GalleryView(this.game, mode);
+        this.setSubstate('GALLERY');
+    }
+
+    private updateGallery(delta: number) {
+        if (!this.gallery || this.gallery.isClosed()) {
+            delete this.gallery;
+            this.startRoaming();
+            return;
+        }
+        this.gallery.update(delta);
+    }
+
     private updateWorldMap(delta: number) {
         if (!this.worldMap || this.worldMap.isClosed()) {
             delete this.worldMap;
@@ -443,6 +461,12 @@ export class RoamingState extends BaseState {
         switch (bind.action) {
             case 'worldMap':
                 this.showWorldMap();
+                return true;
+            case 'bestiary':
+                this.showGallery('bestiary');
+                return true;
+            case 'armoryGallery':
+                this.showGallery('armory');
                 return true;
             case 'items':
             case 'status':
@@ -838,6 +862,7 @@ export class RoamingState extends BaseState {
         }
         this.extMenu?.paint(ctx);
         this.worldMap?.paint(ctx);
+        this.gallery?.paint(ctx);
 
         if (this.overnightDelay) {
             ctx.save();

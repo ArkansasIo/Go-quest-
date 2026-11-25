@@ -3,7 +3,7 @@
  * See docs/GEAR_STATS_ECONOMY.md, docs/BOSS_LOOT_AND_LEGENDARY_SETS.md and
  * docs/ARTIFACTS_AND_RELICS.md.
  *
- * Dragon Warrior's own weapon/armor/shield stay as they are; a {@link GearEnhancement}
+ * The classic weapon/armor/shield stay as they are; a {@link GearEnhancement}
  * is attached to each equipped slot (quality, affixes, sockets, durability, set). Artifacts
  * and relics are two extra slots holding {@link GearInstance}s.
  */
@@ -84,7 +84,7 @@ export const LEGENDARY_SETS: LegendarySet[] = [
 
 export const getSet = (id: string): LegendarySet | undefined => LEGENDARY_SETS.find((s) => s.id === id);
 
-/** Base effect families of artifacts and relics (applied in Dragon Warrior terms). */
+/** Base effect families of artifacts and relics (applied in classic-combat terms). */
 export type WondrousEffect = 'HP' | 'AC' | 'SAVE' | 'ABILITY' | 'HIT' | 'INITIATIVE';
 
 const WONDROUS_EFFECTS: WondrousEffect[] = [ 'HP', 'AC', 'SAVE', 'ABILITY', 'HIT', 'INITIATIVE' ];
@@ -124,7 +124,7 @@ export const wondrousBaseMods = (effect: WondrousEffect, itemLevel: number): Sta
     }
 };
 
-/** Enhancement data attached to Dragon Warrior's weapon, armor or shield. */
+/** Enhancement data attached to the classic weapon, armor or shield. */
 export interface GearEnhancement {
     quality: Quality;
     itemLevel: number;

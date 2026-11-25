@@ -21,7 +21,7 @@ export const EXT_SAVE_VERSION = 1;
 export const BAG_MAX_SIZE = 30;
 
 export interface SlotEnhancement extends GearEnhancement {
-    /** Name of the Dragon Warrior item this enhancement belongs to. */
+    /** Name of the classic item this enhancement belongs to. */
     baseName: string;
 }
 
@@ -82,6 +82,8 @@ export interface ExtSave {
     /** Kills per weapon type, for weapon mastery. */
     weaponKills: Record<string, number>;
     story: StoryProgress;
+    /** Catalog monsters defeated at least once (bestiary). */
+    bestiarySeen: string[];
 }
 
 export const createExtSave = (now = new Date()): ExtSave => ({
@@ -123,6 +125,7 @@ export const createExtSave = (now = new Date()): ExtSave => ({
     aspects: [],
     weaponKills: {},
     story: createStoryProgress(),
+    bestiarySeen: [],
 });
 
 /**

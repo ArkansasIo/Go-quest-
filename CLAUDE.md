@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This project is a clone of the original Dragon Warrior game on the NES. It tries to be as
-authentic to the source as possible, with just a couple of quality-of-life improvements.
+Souldcrest Stormfire is a retro RPG built on a classic NES-style engine, extended with modern RPG
+systems (jobs, gear progression, a 12-act story, a 90-zone world, dungeons and more). The extended
+systems live in `src/app/dw/systems/` as plain TypeScript modules with tests.
 
 It's written in vanilla TypeScript, renders on `canvas` and is built with vite.
 

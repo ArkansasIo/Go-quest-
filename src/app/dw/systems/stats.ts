@@ -2,7 +2,7 @@
  * Substats contributed by gear, gems, runes, sets, buffs, jobs, races, companions and
  * paragon mastery. See docs/COMBAT_EFFECTS.md.
  *
- * How each key maps onto Dragon Warrior's combat:
+ * How each key maps onto the classic combat:
  * - hit: flat attack power      - acb: flat defense power   - hp: flat max HP
  * - dmg: % damage dealt         - resist: % damage taken reduction
  * - crit: % chance of an excellent move  - critdmg: % extra damage on an excellent move

@@ -7,7 +7,7 @@ import { StatMods } from './stats';
 
 export type Role = 'tank' | 'dps' | 'healer';
 
-/** What a job ability does in a Dragon Warrior battle. */
+/** What a job ability does in a classic battle. */
 export interface AbilityEffect {
     /** Physical attack with this damage multiplier. */
     strike?: number;

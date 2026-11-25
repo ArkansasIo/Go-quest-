@@ -14,7 +14,7 @@ export const drawTitleText = (ctx: CanvasRenderingContext2D, centerX: number, ce
     maxWidth: number, maxFontPx: number, shadow: number): void => {
     ctx.save();
     let size = Math.round(maxFontPx);
-    const font = (px: number) => `bold ${px}px "Dragon Warrior 2", monospace`;
+    const font = (px: number) => `bold ${px}px "Souldcrest Pixel", monospace`;
     ctx.font = font(size);
     while (size > 8 && ctx.measureText(GAME_TITLE).width > maxWidth) {
         size--;
