@@ -2,16 +2,20 @@
  * Saved state of every extended system. Stored on the adventure log as <code>ext</code>,
  * so older saves without it load fine (see {@link migrateExtSave}).
  */
+import { StoryProgress, createStoryProgress } from './story';
 import { Counters } from './achievements';
 import { BossProgress, createBossProgress } from './bosses';
 import { CompanionState } from './companions';
 import { GearEnhancement, GearInstance, SocketSlot } from './gear';
-import { JobProgress } from './jobs';
+import { JobProgress , Role } from './jobs';
 import { MaterialBag, ProfessionState, SupplyId } from './professions';
 import { MasteryStat } from './progression';
 import { SeasonState, createSeasonState } from './seasons';
 import { SocketableBag } from './sockets';
 import { InstanceRecord, InstanceRun } from './instances';
+import { TalentRanks } from './talents';
+import { Aspect } from './forge';
+import { EventProgress } from './events';
 
 export const EXT_SAVE_VERSION = 1;
 export const BAG_MAX_SIZE = 30;
@@ -69,6 +73,15 @@ export interface ExtSave {
     /** Raid id -> week key of the last clear. */
     lockouts: Record<string, string>;
     activeRun?: InstanceRun;
+    /** Group finder role for the active run, if queued through it. */
+    groupRole?: Role;
+    talents: TalentRanks;
+    shards: number;
+    aspects: Aspect[];
+    eventProgress?: EventProgress;
+    /** Kills per weapon type, for weapon mastery. */
+    weaponKills: Record<string, number>;
+    story: StoryProgress;
 }
 
 export const createExtSave = (now = new Date()): ExtSave => ({
@@ -105,6 +118,11 @@ export const createExtSave = (now = new Date()): ExtSave => ({
     worldTier: 1,
     instances: {},
     lockouts: {},
+    talents: {},
+    shards: 0,
+    aspects: [],
+    weaponKills: {},
+    story: createStoryProgress(),
 });
 
 /**

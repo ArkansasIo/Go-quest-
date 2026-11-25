@@ -37,7 +37,7 @@ export class BattleCommandBubble extends Bubble {
                 break;
 
             case 'SPELL':
-                //state.spell();
+                state.spell();
                 break;
 
             case 'ITEM':

@@ -4,7 +4,7 @@
 
 export type CounterKey = 'kills' | 'bossKills' | 'secrets' | 'eggs' | 'gemsSocketed' | 'fusions' |
     'gathered' | 'crafted' | 'levelUps' | 'goldEarned' | 'jobChanges' | 'mountRides' | 'companionsRecruited' |
-    'eliteKills' | 'setPieces' | 'artifacts' | 'zonesExplored' | 'instancesCleared';
+    'eliteKills' | 'setPieces' | 'artifacts' | 'zonesExplored' | 'instancesCleared' | 'eventsCompleted';
 
 export type Counters = Partial<Record<CounterKey, number>>;
 

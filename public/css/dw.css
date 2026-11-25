@@ -7,9 +7,65 @@ body {
    background: black;
    color: white;
    font-family: 'Dragon Warrior 2';
-   font-size: 24px;
+   font-size: 20px;
    font-style: normal;
-   padding-left: 0 3em;
+   margin: 0;
+   padding: 0 16px 24px;
+}
+
+/* Title banner in the same grey-and-white frame style as the in-game title */
+.banner {
+   max-width: 760px;
+   margin: 16px auto;
+   padding: 8px;
+   background: #7c7c7c;
+   border: 3px solid #fcfcfc;
+   outline: 4px solid #7c7c7c;
+   text-align: center;
+}
+.banner h1 {
+   margin: 0;
+   font-size: 40px;
+   letter-spacing: 4px;
+   text-shadow: 3px 3px 0 #000;
+}
+.byline {
+   margin: 4px 0 0;
+   font-size: 16px;
+}
+
+.layout {
+   display: flex;
+   flex-wrap: wrap;
+   justify-content: center;
+   align-items: flex-start;
+   gap: 24px;
+}
+
+/* The game viewport: a black window with the classic white menu border */
+.frame {
+   padding: 8px;
+   border: 3px solid #fcfcfc;
+   border-radius: 6px;
+   background: #000;
+   max-width: 100%;
+   overflow: hidden;
+}
+
+.panel {
+   min-width: 220px;
+   max-width: 300px;
+   padding: 8px 16px;
+   border: 3px solid #fcfcfc;
+   border-radius: 6px;
+}
+.panel ul {
+   list-style: none;
+   margin: 0 0 12px;
+   padding: 0;
+}
+.panel li {
+   margin: 6px 0;
 }
 
 h1 {

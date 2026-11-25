@@ -57,6 +57,8 @@ import { StatMods } from '@/app/dw/systems/stats';
 import { pickRareBoss } from '@/app/dw/systems/bosses';
 import { TileLocation, placeDiscoveries } from '@/app/dw/systems/discoveries';
 import { defaultRng } from '@/app/dw/systems/rng';
+import { currentEvent } from '@/app/dw/systems/events';
+import { zoneAt } from '@/app/dw/systems/world';
 
 /** Chance that a random encounter is a rare roaming boss instead. */
 export const RARE_BOSS_CHANCE = 1 / 40;
@@ -835,6 +837,24 @@ export class DwGame extends Game {
     }
 
     /**
+     * In the current world event's zone, half of random encounters are event foes.
+     */
+    private possiblyStartEventFoe(): boolean {
+        const map = this.getMap();
+        if (map.name !== 'overworld') {
+            return false;
+        }
+        const event = currentEvent();
+        const { zone } = zoneAt(this.hero.mapRow, this.hero.mapCol, map.height, map.width);
+        if (zone.id !== event.zone.id || this.ext.eventProgress().claimed || defaultRng() >= 0.5 ||
+            !this.getEnemy(event.def.enemy)) {
+            return false;
+        }
+        this.startEncounter(event.def.enemy, { event: true, name: `${event.def.name} ${this.getEnemy(event.def.enemy).name}` });
+        return true;
+    }
+
+    /**
      * Possibly turns a random encounter into a rare roaming boss.
      */
     private possiblyStartRareBoss(): boolean {
@@ -860,7 +880,7 @@ export class DwGame extends Game {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                     territory = territory - (this.map as any).getTilesetForGid(territory).firstgid;
                     if (territory >= 0) {
-                        if (this.possiblyStartRareBoss()) {
+                        if (this.possiblyStartEventFoe() || this.possiblyStartRareBoss()) {
                             return true;
                         }
                         const territories: string[][] = this.assets.get('enemyTerritories');
@@ -879,6 +899,10 @@ export class DwGame extends Game {
         const muted: boolean = this.audio.toggleMuted();
         this.setStatusMessage(muted ? 'Audio muted' : 'Audio enabled');
         return muted;
+    }
+
+    setRandomEncounters(enabled: boolean) {
+        this.randomEncounters = enabled;
     }
 
     toggleRandomEncounters() {

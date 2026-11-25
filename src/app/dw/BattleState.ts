@@ -10,16 +10,19 @@ import { TextBubble } from './TextBubble';
 import { Conversation } from './Conversation';
 import { EnemyAiResult } from './EnemyAI';
 import { ChoiceBubble } from './ChoiceBubble';
-import { BossDef, FIXED_BOSS_BY_ENEMY, getBoss } from './systems/bosses';
+import { BossDef, FIXED_BOSS_BY_ENEMY, getBoss , bossRank, bossSeed } from './systems/bosses';
 import { EffectSet, EFFECTS } from './systems/effects';
 import { JobAbility, MonsterJob, RACE_ABILITIES, availableAbilities, getJob, rollMonsterJob, supportLevel } from './systems/jobs';
 import { heroHit, incomingHit } from './systems/battleMath';
 import { Rng, defaultRng } from './systems/rng';
-import { StatMods, addMods, capMods } from './systems/stats';
+import { StatMods, addMods, capMods , elementalBonus } from './systems/stats';
 import { companionAssist, getCompanion } from './systems/companions';
 import { wearGear } from './systems/gear';
 import { SUPPLIES, SupplyId } from './systems/professions';
 import { worldTierScaling } from './systems/instances';
+import { BattleSpell, knownSpells, rollDice } from './systems/spells';
+import { bossTitle } from './systems/legendaries';
+import { CHECK_BOSS_WEAKEN, getAct } from './systems/story';
 
 /**
  * Options for a battle beyond the enemy type.
@@ -33,6 +36,10 @@ export interface BattleOptions {
     name?: string;
     /** Part of a dungeon / raid / trial / tower run. */
     instance?: boolean;
+    /** A foe of the current world event. */
+    event?: boolean;
+    /** The climactic battle of a story act. */
+    story?: number;
 }
 
 interface AbilityChoice {
@@ -72,6 +79,7 @@ export class BattleState extends BaseState {
     private relentlessUsed = false;
     private skillBubble?: ChoiceBubble<AbilityChoice>;
     private nextInstanceFight?: { enemy: string; bossId?: string };
+    private spellBubble?: ChoiceBubble<BattleSpell>;
 
     constructor(game: DwGame, enemyName: string, options: BattleOptions = {}) {
         super(game);
@@ -86,7 +94,7 @@ export class BattleState extends BaseState {
         this.boss = bossId ? getBoss(bossId) : undefined;
         if (this.boss && !this.boss.fixed) {
             const e = this.enemy;
-            e.name = options.name ?? this.boss.name;
+            e.name = options.name ?? `${this.boss.name} ${bossTitle(bossRank(this.boss.level), bossSeed(this.boss.id))}`;
             e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * this.boss.hpMult));
             e.str = Math.round(e.str * this.boss.strMult);
             e.xp = Math.round(e.xp * this.boss.hpMult);
@@ -102,8 +110,17 @@ export class BattleState extends BaseState {
             e.str = Math.round(e.str * this.monsterJob.strMult);
         }
 
-        // World tier scaling
+        // Story villains
         const ext = game.ext;
+        const act = options.story ? getAct(options.story) : undefined;
+        if (act) {
+            const weaken = ext.save.story.checks[act.act] ? CHECK_BOSS_WEAKEN : 1;
+            this.enemy.name = act.villain;
+            this.enemy.hp = this.enemy.maxHp = Math.max(1, Math.round(this.enemy.maxHp * act.bossHp * weaken));
+            this.enemy.str = Math.round(this.enemy.str * act.bossStr * weaken);
+        }
+
+        // World tier scaling
         if (ext.save.worldTier > 1) {
             const tier = worldTierScaling(ext.save.worldTier);
             this.enemy.hp = this.enemy.maxHp = Math.max(1, Math.round(this.enemy.maxHp * tier.hpMult));
@@ -209,6 +226,9 @@ export class BattleState extends BaseState {
      * Lets the active companion assist. Returns whether the enemy died.
      */
     private companionTurn(): boolean {
+        if (this.groupTurn()) {
+            return true;
+        }
         const ext = this.game.ext;
         const id = ext.save.activeCompanion;
         const state = ext.activeCompanionState();
@@ -265,6 +285,18 @@ Thy gold increases by ${result.gold}.`;
         result.lines.forEach((line) => {
             this.textBubble.addToConversation({ text: line });
         });
+
+        if (this.options.story) {
+            ext.completeAct(this.options.story, this.game.hero, this.game.party).forEach((line) => {
+                this.textBubble.addToConversation({ text: line });
+            });
+        }
+
+        if (this.options.event) {
+            ext.eventKill(this.game.hero, this.game.party).forEach((line) => {
+                this.textBubble.addToConversation({ text: line });
+            });
+        }
 
         // Instance runs chain into the next fight
         if (this.options.instance && ext.save.activeRun) {
@@ -529,6 +561,90 @@ Thy gold increases by ${result.gold}.`;
         this.afterHeroAction();
     }
 
+    /**
+     * Opens the list of spells the hero's class knows.
+     */
+    spell() {
+        const ext = this.game.ext;
+        const spells = knownSpells(ext.save.job, ext.jobLevel(ext.save.job));
+        const tileSize = this.game.getTileSize();
+        this.spellBubble = new ChoiceBubble<BattleSpell>(this.game, tileSize * 5, tileSize, tileSize * 11,
+            Math.min(spells.length + 2, 11) * 18 * this.game.scale, spells,
+            (sp) => `${sp.name.padEnd(14, ' ')}${sp.mp}MP`, true, `SPELL ${this.game.hero.mp}MP`);
+    }
+
+    private castSpell(spell: BattleSpell) {
+        const hero = this.game.hero;
+        if (this.heroEffects.cannotCast()) {
+            this.textBubble.addToConversation({ text: 'Thou art silenced and cannot cast! Command?' });
+            return;
+        }
+        if (hero.mp < spell.mp) {
+            this.textBubble.addToConversation({ text: 'Thou dost not have enough magic to cast the spell. Command?' });
+            return;
+        }
+        hero.mp -= spell.mp;
+        this.commandExecuting = true;
+        this.textBubble.addToConversation({ text: `${hero.name} chants the spell of ${spell.name}.`, sound: 'castSpell' }, true);
+        const mods = this.heroMods();
+        if (spell.damage) {
+            const base = rollDice(this.rng, spell.damage);
+            const damage = Math.max(1, Math.round(base * (1 + ((mods.dmg ?? 0) + elementalBonus(mods)) / 100) *
+                (1 + this.enemyEffects.getTakenPct() / 100)));
+            this.enemyEffects.absorbDamage(damage);
+            const dead = this.enemy.takeDamage(damage);
+            this.textBubble.addToConversation({ text: `The ${this.enemy.name}'s Hit Points have been reduced by ${damage}.` }, true);
+            if (dead) {
+                this.defeatedEnemy();
+                return;
+            }
+        }
+        if (spell.heal) {
+            const amount = Math.round(rollDice(this.rng, spell.heal) * (1 + (mods.heal ?? 0) / 100));
+            hero.incHp(amount);
+            this.textBubble.addToConversation({ text: `Thou recoverest ${amount} HP.` }, true);
+        }
+        if (spell.selfEffect) {
+            this.heroEffects.apply(spell.selfEffect.id, spell.selfEffect.turns, { pool: spell.selfEffect.pool });
+            this.textBubble.addToConversation({ text: `Thou art ${EFFECTS[spell.selfEffect.id]?.name.toLowerCase() ?? 'empowered'}.` }, true);
+        }
+        if (spell.enemyEffect) {
+            const saveChance = this.boss ? 0.45 : 0.2;
+            if (this.rng() < saveChance) {
+                this.textBubble.addToConversation({ text: `The ${this.enemy.name} resists the spell!` }, true);
+            } else {
+                this.enemyEffects.apply(spell.enemyEffect.id, spell.enemyEffect.turns,
+                    { stacks: spell.enemyEffect.stacks, bonus: Math.floor(hero.level / 3) });
+                this.textBubble.addToConversation({ text: `The ${this.enemy.name} is ${EFFECTS[spell.enemyEffect.id]?.name.toLowerCase() ?? 'afflicted'}.` }, true);
+            }
+        }
+        this.afterHeroAction();
+    }
+
+    /**
+     * Group finder allies act each turn during a group run. Returns whether the enemy died.
+     */
+    private groupTurn(): boolean {
+        const ext = this.game.ext;
+        const role = ext.save.groupRole;
+        if (!role || !this.options.instance) {
+            return false;
+        }
+        const hero = this.game.hero;
+        const dpsCount = role === 'dps' ? 2 : 3;
+        const damage = Math.max(1, Math.round(hero.computePhysicalAttackDamage(this.enemy) * 0.3 * dpsCount));
+        this.textBubble.addToConversation({ text: `Thy party strikes for ${damage} damage.` }, true);
+        if (role !== 'healer' && hero.hp < hero.maxHp * 0.7) {
+            const heal = Math.max(1, Math.round(hero.maxHp * 0.1));
+            hero.incHp(heal);
+            this.textBubble.addToConversation({ text: `The party healer mends thee for ${heal}.` }, true);
+        }
+        if (role !== 'tank') {
+            this.heroEffects.apply('fortify', 1); // The tank draws attacks
+        }
+        return this.enemy.takeDamage(damage);
+    }
+
     private abilityChoices(): AbilityChoice[] {
         const ext = this.game.ext;
         const save = ext.save;
@@ -642,6 +758,7 @@ Thy gold increases by ${result.gold}.`;
                 this.textBubble.paint(ctx);
             }
             this.skillBubble?.paint(ctx);
+            this.spellBubble?.paint(ctx);
 
         } else if (this.enemiesDead) {
             if (this.statBubble) {
@@ -720,6 +837,18 @@ Thy gold increases by ${result.gold}.`;
             this.enemyAttackShakeDelay.update(delta);
             this.shakeMillisCount += delta;
             this.shakeXOffs = this.shakeMillisCount % 100 > 50 ? 4 : -4;
+        }
+
+        if (this.spellBubble) {
+            this.spellBubble.update(delta);
+            if (this.spellBubble.handleInput()) {
+                const spell = this.spellBubble.getSelectedItem();
+                delete this.spellBubble;
+                if (spell) {
+                    this.castSpell(spell);
+                }
+            }
+            return;
         }
 
         if (this.skillBubble) {

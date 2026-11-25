@@ -1,4 +1,5 @@
 import { Delay, Image, InputManager } from 'gtp';
+import { drawTitleText } from './GameOptions';
 import { BaseState } from './BaseState';
 import { DwGame } from './DwGame';
 import { InitialMenuState } from './InitialMenuState';
@@ -52,10 +53,19 @@ export class TitleScreenState extends BaseState {
         game.clearScreen();
         const w: number = game.getWidth();
 
+        // Title panel drawn in the same style as the original banner art
         const img: Image = game.assets.get('title');
-        let x: number = (w - img.width) / 2;
+        const panelW = img.width;
+        const panelH = img.height;
+        let x: number = (w - panelW) / 2;
         let y = 30;
-        img.draw(ctx, x, y);
+        const scale = game.scale;
+        ctx.fillStyle = '#7c7c7c';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = '#fcfcfc';
+        ctx.lineWidth = 2 * scale;
+        ctx.strokeRect(x + 4 * scale, y + 4 * scale, panelW - 8 * scale, panelH - 8 * scale);
+        drawTitleText(ctx, w / 2, y + panelH / 2, panelW - 24 * scale, 30 * scale, 2 * scale);
 
         if (!game.audio.isInitialized()) {
             let text = 'Sound is disabled as your';
